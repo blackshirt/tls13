@@ -16,7 +16,7 @@ Limited subset of TLS Protocol Version 1.3 from [RFC 8446](https://datatracker.i
 > This module depends on some of v modules availables at this github repository.
 > Install its before to run some test.
 
-For current this time, its only supports limited subset of TLS 1.3 standard (maybe get ipdated in time)
+Its only supports limited subset of TLS 1.3 standard (maybe get ipdated in time)
 - Client only (server maybe in plan)
 - Strict limited to only 1.3 version of standard (no plan for support for older version)
 - Only support TLS_CHACHA20_POLY1305_SHA256 ciphersuite 
