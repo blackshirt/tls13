@@ -12,16 +12,20 @@ Limited subset of TLS Protocol Version 1.3 from [RFC 8446](https://datatracker.i
 > With strict and limited configuration of `openssl s_server` command for local testing below,
 > It can perform full TLS 1.3 handshake phase and send application data
 
+> [!Note]
+> This module depends on some of v modules availables at this github repository.
+> Install its before to run some test.
+
 This module only support limited subset of TLS 1.3 standard.
 - Client only (server maybe in plan)
 - Strict limited to only 1.3 version of standard (no plan for support for older version)
 - Only support TLS_CHACHA20_POLY1305_SHA256 ciphersuite 
-- Only support ed25519 SignatureScheme
+- Only support ed25519 for SignatureScheme extensions
 - Only support x25519 NamedGroup for Elliptic Curve Groups (ECDHE) key exchange
 - support for server_name extension
 - support key_share extension only through x25519 NamedGroup
-- Dont support HelloRetryRequest
-- And many others stuff does not yet supported
+- Doesn't support HelloRetryRequest message
+- And many others stuff does not supported yet
 
 ## Testing
 Testing with local openssl server 
