@@ -379,15 +379,15 @@ pub fn (mut ses Session) close() ! {
 	log.info('Successfully write alert ${a.desc} ${n} bytes')
 }
 
-// read reads data from socket into the provided buffer
+// read reads data from socket into the provided buffer. This differs from `Session.read_at_least`
+// in how underlying read happen. The later one, try to read buf.len bytes exactly,  or return error if
+// can't do.
 fn (mut ses Session) read(mut buf []u8) !int {
 	lock {
 		if ses.state_is_closed() || ses.conn.sock.handle <= 1 {
 			return error('sock_read: trying to read a closed socket')
 		}
-		n := read_at_least(mut ses.reader, mut buf)!
-		assert n == buf.len
-
+		n := ses.reader.read(mut buf)!
 		return n
 	}
 	return error('none')
@@ -411,7 +411,7 @@ fn (mut ses Session) read_at_least(mut buf []u8) !int {
 // Utility read function, ported from Golang io package
 //
 // read_at_least reads from r into result buffer until it has read at least result.len
-// Its adapted from golang of ReadAtLeast from bytes module. Its return number of bytes
+// Its adapted from golang of `bytes.ReadAtLeast` from bytes module. Its return number of bytes
 // has been read from reader, exactly its return result.len, otherwise its return error.
 fn read_at_least(mut r io.Reader, mut result []u8) !int {
 	needed := result.len
