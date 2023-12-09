@@ -6,14 +6,11 @@ import crypto.sha256
 import crypto.sha512
 
 const min_hello_ctx = 2
-
 const ful_hello_ctx = 4
-
 const min_middle_ctx = 6
-
 const min_full_ctx = 7
 
-// its mimics unpubliced of standard cyrpto.hash.Digest
+// Transcripter mimics unpublished structure from standard vlib in a `cyrpto.hash.Digest`
 interface Transcripter {
 	size() int
 	block_size() int
@@ -44,7 +41,6 @@ fn new_transcripter(h crypto.Hash) !&Transcripter {
 // server CertificateVerify(15), server Finished(20), EndOfEarlyData(5), client
 // Certificate(11), client CertificateVerify(15), client Finished(20).
 const fullhsk_msgtype_sum = 120
-
 const fullhsk_messages_len = 13
 
 // HelloContext is arrays of Handshake messages start from first ClientHello to last ServerHello,
