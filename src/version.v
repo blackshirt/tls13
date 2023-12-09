@@ -8,13 +8,9 @@ import blackshirt.buffer
 type ProtoVersion = u16
 
 const u16size = 2
-
 const tls_v13 = ProtoVersion(0x0304)
-
 const tls_v12 = ProtoVersion(0x0303)
-
 const tls_v11 = ProtoVersion(0x0302)
-
 const tls_v10 = ProtoVersion(0x0301)
 
 fn (v ProtoVersion) pack() ![]u8 {
