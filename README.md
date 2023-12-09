@@ -25,7 +25,8 @@ This module only support limited subset of TLS 1.3 standard.
 - support for server_name extension
 - support key_share extension only through x25519 NamedGroup
 - Doesn't support HelloRetryRequest message
-- And many others stuff does not supported yet
+- Doesn't support verify server Certificate, only parse it (currently, we have no armor for this)
+- And many others stuff does not supported yet thats can bring to panic (error)
 
 ## Testing
 Testing with local openssl server 
