@@ -4,52 +4,25 @@ import crypto
 import blackshirt.hkdf
 
 const empty_hsk_msgs = []Handshake{len: 0}
-
 const nullbytes = []u8{len: 0, cap: 0}
-
 const extern_binder_label = 'ext binder'
-
 const resump_binder_label = 'res binder'
-
 const client_early_label = 'c e traffic'
-
 const early_exporter_label = 'e exp master'
-
 const derived_label = 'derived'
-
 const client_hsksecret_label = 'c hs traffic'
-
 const server_hsksecret_label = 's hs traffic'
-
 const client_appsecret_label = 'c ap traffic'
-
 const server_appsecret_label = 's ap traffic'
-
 const exporter_mastersec_label = 'exp master'
-
 const resump_mastersec_label = 'res master'
-
 const write_key_label = 'key'
-
 const write_iv_label = 'iv'
-
 const traffic_upd_label = 'traffic upd'
-
 const finished_key_label = 'finished'
-
 const resumption_label = 'resumption'
 
-// early_secret = HKDF-Extract(salt: 00, key: 00...)
-// empty_hash = SHA384("")
-// derived_secret = HKDF-Expand-Label(key: early_secret, label: "derived", ctx: empty_hash, len: 48)
-// handshake_secret = HKDF-Extract(salt: derived_secret, key: shared_secret)
-// client_secret = HKDF-Expand-Label(key: handshake_secret, label: "c hs traffic", ctx: hello_hash, len: 48)
-// server_secret = HKDF-Expand-Label(key: handshake_secret, label: "s hs traffic", ctx: hello_hash, len: 48)
-// client_handshake_key = HKDF-Expand-Label(key: client_secret, label: "key", ctx: "", len: 32)
-// server_handshake_key = HKDF-Expand-Label(key: server_secret, label: "key", ctx: "", len: 32)
-// client_handshake_iv = HKDF-Expand-Label(key: client_secret, label: "iv", ctx: "", len: 12)
-// server_handshake_iv = HKDF-Expand-Label(key: server_secret, label: "iv", ctx: "", len: 12)
-// 7.1.  Key Schedule
+// RFC 8446 7.1.  Key Schedule
 struct KeyScheduler {
 	// underlying crypto hasher
 	hash crypto.Hash
@@ -71,7 +44,8 @@ mut:
 	// its contains secret from derived_secret process of ClientHello...ServerHello messages
 	srv_hsk_tsecret []u8
 	cln_hsk_tsecret []u8
-	// server client handshake_write_key an write_iv, derived from server/client handshakes_traffic_secret
+	// server and client handshake_write_key and write_iv, 
+	// derived from server/client handshakes_traffic_secret
 	srv_hsk_wrkey []u8
 	srv_hsk_wriv  []u8
 	cln_hsk_wrkey []u8
@@ -79,7 +53,8 @@ mut:
 	// application_traffic_secret
 	srv_app_tsecret []u8
 	cln_app_tsecret []u8
-	// application write_key and write_iv
+	// server and client application write_key and write_iv
+	// derived from application_traffic_secret
 	srv_app_wrkey []u8
 	srv_app_wriv  []u8
 	cln_app_wrkey []u8
