@@ -5,10 +5,10 @@ Limited subset of TLS Protocol Version 1.3 from [RFC 8446](https://datatracker.i
 > [!Warning]
 >
 > Implementing TLS 1.3 is a hard and full of cullprits that you should aware.
-> This module does not finished yet and does not recommended for production use,
+> Its does not finished yet and no recommended for production use,
 > Its intended only for learning purposes.
 > 
-> Basic of messages parsing, handshake processing, decryption/encryption record almost has been implemented.
+> Basic of messages parsing, handshake processing, decryption/encryption record, key scheduling almost has been implemented.
 > With strict and limited configuration of `openssl s_server` command for local testing below,
 > It can perform full TLS 1.3 handshake phase and send application data
 
@@ -16,7 +16,7 @@ Limited subset of TLS Protocol Version 1.3 from [RFC 8446](https://datatracker.i
 > This module depends on some of v modules availables at this github repository.
 > Install its before to run some test.
 
-This module only support limited subset of TLS 1.3 standard.
+For current this time, its only supports limited subset of TLS 1.3 standard (maybe get ipdated in time)
 - Client only (server maybe in plan)
 - Strict limited to only 1.3 version of standard (no plan for support for older version)
 - Only support TLS_CHACHA20_POLY1305_SHA256 ciphersuite 
