@@ -28,6 +28,40 @@ Its only supports limited subset of TLS 1.3 standard (maybe get ipdated in time)
 - Doesn't support verify server Certificate, only parse it (currently, we have no armor for this)
 - And many others stuff does not supported yet thats can bring to panic (error)
 
+### File layout description
+```bash
+├── alert.v                    -> Basic handling and parsing TLS 1.3 Alert message
+├── ciphersuite.v              -> Basic ciphersuite handling, packing and unpacking
+├── ciphersuite_test.v
+├── extension.v                -> Support for TLS 1.3 Extensions, some of them lives in separates files
+├── extension_test.v
+├── handshake.v                -> Core TLS 1.3 Handshake message handling, from packing and unpacking, validation, and general use cases
+├── handshake_test.v
+├── hkdf.v                     -> Hmac Key Derivation Function, used for key derivation and traffic calculation
+├── keys.v                      
+├── keyschedule.v              -> Key update scheduling for secret derivation and traffic keys calculation
+├── keyschedule_test.v
+├── keyshare.v                 -> key_share extension handling
+├── keyshare_test.v
+├── psk.v                      -> preshared key support (not usable currently)
+├── record.v                   -> Contains fundamental TLS 1.3 record structure, basic parsing and unpacking, small utility to help serialization
+├── record_test.v
+├── recordlayer.v              -> High level record layer, handle encryption decryption, fragmentation (not yet ready)
+├── servername.v               -> server_name extension support
+├── servername_test.v
+├── session.v                  -> Core TLS 1.3 client capable performing handshake and related task, write record to the wire, read record from wire.
+├── session_handshaker.v       -> Core how the session performing TLS 1.3 handshake process
+├── signaturescheme.v          -> signature_scheme extension support
+├── signaturescheme_test.v
+├── state.v                    -> Session state handling
+├── supportedgroups.v          -> supported_groups extension support
+├── supportedgroups_test.v
+├── supportedversions.v        -> supported_versions extension support
+├── supportedversions_test.v
+├── transcripter.v             -> Message hash tool for hash transcripting of the handshake messages
+└── version.v                  -> basic version structure represent TLS 1.3 version
+```
+
 ## Testing
 Testing with local openssl server 
 
@@ -52,3 +86,4 @@ $openssl s_client -connect localhost:8443
 ```bash
 $v run main.v 
 ```
+
