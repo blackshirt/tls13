@@ -76,6 +76,10 @@ openssl req -x509 -days 365 -in pubcert.csr -key privkey.pem -out pubcert.pem
 ```bash
 $openssl s_server -accept 8443 -tls1_3 -state -tlsextdebug -debug -msg -cert pubcert.pem -key privkey.pem
 ```
+or you can use cloned [`wolfssl`](https://github.com/wolfssl/wolfssl), configure the build with `--enable-tls13 --enable-curve25519 --enable-ed25519` and run example server from examples directory
+```
+➜ ~/wolfssl (master) $ ./examples/server/server -d -b -g -verbose -p 8443 -v 4 -c ./certs/ed25519/server-ed25519-cert.pem -k ./certs/ed25519/server-ed25519-priv.pem
+```
 
 ### Test client 
 ```bash
@@ -87,3 +91,53 @@ $openssl s_client -connect localhost:8443
 $v run main.v 
 ```
 
+Here's some output from client 
+```
+$ v -d trace_ssl run src/main.v
+2023-12-19 03:05:29.828695 [INFO ] Initializing TCP Connection to 127.0.0.1:8443
+2023-12-19 03:05:29.829303 [INFO ] State: ts_init
+2023-12-19 03:05:29.837817 [INFO ] State: ts_client_hello
+2023-12-19 03:05:29.838043 [INFO ] State: ts_server_hello
+2023-12-19 03:05:29.838164 [INFO ] parse_tls_message .. handshake
+2023-12-19 03:05:29.838208 [INFO ] parse_server_hsk_msg..server_hello
+2023-12-19 03:05:29.838242 [INFO ] parse_server_hello
+2023-12-19 03:05:29.846931 [INFO ] State: ts_encrypted_extensions
+2023-12-19 03:05:29.847135 [INFO ] parse_tls_message .. handshake
+2023-12-19 03:05:29.847163 [INFO ] parse_server_hsk_msg..encrypted_extensions
+2023-12-19 03:05:29.847200 [INFO ] State: ts_server_certificate_request
+2023-12-19 03:05:29.848056 [INFO ] parse_tls_message .. handshake
+2023-12-19 03:05:29.848082 [INFO ] parse_server_hsk_msg..certificate
+2023-12-19 03:05:29.848272 [INFO ] State: ts_server_certificate_verify
+2023-12-19 03:05:29.848491 [INFO ] parse_tls_message .. handshake
+2023-12-19 03:05:29.848514 [INFO ] parse_server_hsk_msg..certificate_verify
+2023-12-19 03:05:29.848557 [INFO ] State: ts_server_finished
+2023-12-19 03:05:29.848750 [INFO ] parse_tls_message .. handshake
+2023-12-19 03:05:29.848783 [INFO ] parse_server_hsk_msg..finished
+2023-12-19 03:05:29.849881 [INFO ] State: ts_client_finished
+2023-12-19 03:05:29.850375 [INFO ] Perform Session.send_client_finished_msg ...
+2023-12-19 03:05:29.850569 [INFO ] State: ts_connected
+2023-12-19 03:05:29.850598 [INFO ] State: ts_application_data
+2023-12-19 03:05:29.850612 [INFO ] App-data
+[/workspaces/doglon/src/tls13/session_common.v:133] ses.tickets: []
+[src/main.v:30] request: GET / HTTP/1.1
+Host: localhost:8443
+2023-12-19 03:05:29.850772 [INFO ] Successfully write 59 bytes encrypted of application data
+[src/main.v:46] rec.str(): TLSPlaintext:type=application_data:length=225:fragment=HTTP/1.1 200 OK
+Content-Type: text/html
+Connection: close
+Content-Length: 141
+
+<html>
+<head>
+<title>Welcome to wolfSSL!</title>
+</head>
+<body>
+<p>wolfSSL has successfully performed handshake!</p>
+</body>
+</html>
+
+2023-12-19 03:05:29.853783 [INFO ] Do Session.close
+2023-12-19 03:05:29.853943 [INFO ] Successfully write alert CLOSE_NOTIFY 24 bytes
+```
+
+&copy;[blackshirt](https://github.com/blackshirt/tls13)
