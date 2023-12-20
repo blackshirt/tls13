@@ -174,7 +174,7 @@ fn test_ee_encrypt_decrypt() {
 	assert plaintext.len == 7
 	length := plaintext.len + rc.cipher.tag_size()
 
-	add := rc.build_add_data(ContentType.application_data, tls_v12, length)!
+	add := rc.make_additional_data(ContentType.application_data, tls_v12, length)!
 	ciphertext, tag := rc.cipher.encrypt(server_hwkey, snonce, add, plaintext)!
 
 	mut encrypted_record := []u8{}
@@ -192,12 +192,11 @@ fn test_ee_encrypt_decrypt() {
 	cxt := trec.encrypted_record[0..trec.encrypted_record.len - rc.cipher.tag_size()]
 	assert cxt == ciphertext
 	dcc, mcc := rc.cipher.decrypt(server_hwkey, snonce, add, cxt)!
-	dec_trec, mac := rc.decrypt(trec, server_hwkey, server_hwiv)!
+	dec_trec := rc.decrypt(trec, server_hwkey, server_hwiv)!
 
 	assert dcc == plaintext
-	assert mac == mcc
 	assert dec_trec == pxt
-	assert tag == mac
+	assert tag == mcc
 
 	dcc_inn := TLSInnerPlaintext.unpack(dcc)!
 	exx := dcc_inn.to_plaintext()!

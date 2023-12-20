@@ -7,7 +7,7 @@ import blackshirt.ecdhe
 
 struct KeyShareEntry {
 mut:
-	group        NamedGroup = .unknown
+	group        NamedGroup = .x25519
 	key_exchange []u8 // <1..2^16-1>
 }
 
@@ -102,7 +102,7 @@ struct KeyShareExtension {
 	msg_type       HandshakeType
 	is_hrr         bool
 	client_shares  []KeyShareEntry
-	selected_group NamedGroup = .unknown
+	selected_group NamedGroup = .x25519
 	server_share   KeyShareEntry
 }
 

@@ -4,27 +4,44 @@ import crypto
 import blackshirt.hkdf
 
 const empty_hsk_msgs = []Handshake{len: 0}
+
 const nullbytes = []u8{len: 0, cap: 0}
+
 const extern_binder_label = 'ext binder'
+
 const resump_binder_label = 'res binder'
+
 const client_early_label = 'c e traffic'
+
 const early_exporter_label = 'e exp master'
+
 const derived_label = 'derived'
+
 const client_hsksecret_label = 'c hs traffic'
+
 const server_hsksecret_label = 's hs traffic'
+
 const client_appsecret_label = 'c ap traffic'
+
 const server_appsecret_label = 's ap traffic'
+
 const exporter_mastersec_label = 'exp master'
+
 const resump_mastersec_label = 'res master'
+
 const write_key_label = 'key'
+
 const write_iv_label = 'iv'
+
 const traffic_upd_label = 'traffic upd'
+
 const finished_key_label = 'finished'
+
 const resumption_label = 'resumption'
 
 // RFC 8446 7.1.  Key Schedule
 struct KeyScheduler {
-	// underlying crypto hasher
+	// underlying crypto.Hash
 	hash crypto.Hash
 	// hmac key derivation function based on provided hash
 	kdf hkdf.Hkdf
@@ -35,7 +52,12 @@ mut:
 	// for simplifying transcript hash integration.
 	hsx []Handshake
 	// early_secret derived from psk bytes
-	early_secret []u8
+	early_secret      []u8
+	cln_early_tsecret []u8
+	cln_early_wrkey   []u8
+	cln_early_wriv    []u8
+	extern_binderkey  []u8
+	resump_binderkey  []u8
 	// handshake_secret, derived from psk and ecdhe shared secret
 	hsk_secret []u8
 	// master_secret derived from above secret
@@ -44,8 +66,7 @@ mut:
 	// its contains secret from derived_secret process of ClientHello...ServerHello messages
 	srv_hsk_tsecret []u8
 	cln_hsk_tsecret []u8
-	// server and client handshake_write_key and write_iv, 
-	// derived from server/client handshakes_traffic_secret
+	// server client handshake_write_key an write_iv, derived from server/client handshakes_traffic_secret
 	srv_hsk_wrkey []u8
 	srv_hsk_wriv  []u8
 	cln_hsk_wrkey []u8
@@ -53,8 +74,7 @@ mut:
 	// application_traffic_secret
 	srv_app_tsecret []u8
 	cln_app_tsecret []u8
-	// server and client application write_key and write_iv
-	// derived from application_traffic_secret
+	// application write_key and write_iv
 	srv_app_wrkey []u8
 	srv_app_wriv  []u8
 	cln_app_wrkey []u8
@@ -75,8 +95,83 @@ fn new_key_scheduler(h crypto.Hash) !&KeyScheduler {
 	return kd
 }
 
+// transcripter
 fn (ks KeyScheduler) transcripter() &Transcripter {
 	return ks.tc
+}
+
+fn (mut ks KeyScheduler) reset() {
+	unsafe {
+		// reset the state of the Transcripter
+		ks.tc.reset()
+		// we doing `array.clear()` instead `array.reset()`. clear clears the array without
+		// deallocating the allocated data. It does it by setting the array length to 0
+		// where `array.reset()` reset quickly sets the bytes of all elements of the array to 0
+		// that can later lead to hard to find bugs.
+		ks.hsx.clear()
+
+		ks.early_secret.clear()
+		ks.cln_early_tsecret.clear()
+		ks.cln_early_wrkey.clear()
+		ks.cln_early_wriv.clear()
+		ks.extern_binderkey.clear()
+		ks.resump_binderkey.clear()
+
+		ks.hsk_secret.clear()
+		ks.master_secret.clear()
+
+		ks.srv_hsk_tsecret.clear()
+		ks.cln_hsk_tsecret.clear()
+		ks.srv_hsk_wrkey.clear()
+		ks.srv_hsk_wriv.clear()
+		ks.cln_hsk_wrkey.clear()
+		ks.cln_hsk_wriv.clear()
+
+		ks.srv_app_tsecret.clear()
+		ks.cln_app_tsecret.clear()
+		ks.srv_app_wrkey.clear()
+		ks.srv_app_wriv.clear()
+		ks.cln_app_wrkey.clear()
+		ks.cln_app_wriv.clear()
+
+		ks.exp_master_sec.clear()
+		ks.resump_master_sec.clear()
+	}
+}
+
+fn (mut ks KeyScheduler) free() {
+	unsafe {
+		// frees all memory occupied by the Transcripter
+		ks.tc.free()
+		ks.hsx.free()
+
+		ks.early_secret.free()
+		ks.cln_early_tsecret.free()
+		ks.cln_early_wrkey.free()
+		ks.cln_early_wriv.free()
+		ks.extern_binderkey.free()
+		ks.resump_binderkey.free()
+
+		ks.hsk_secret.free()
+		ks.master_secret.free()
+
+		ks.srv_hsk_tsecret.free()
+		ks.cln_hsk_tsecret.free()
+		ks.srv_hsk_wrkey.free()
+		ks.srv_hsk_wriv.free()
+		ks.cln_hsk_wrkey.free()
+		ks.cln_hsk_wriv.free()
+
+		ks.srv_app_tsecret.free()
+		ks.cln_app_tsecret.free()
+		ks.srv_app_wrkey.free()
+		ks.srv_app_wriv.free()
+		ks.cln_app_wrkey.free()
+		ks.cln_app_wriv.free()
+
+		ks.exp_master_sec.free()
+		ks.resump_master_sec.free()
+	}
 }
 
 // update_hash_with_handshake updates internal state of hash with handshake message
@@ -160,20 +255,30 @@ fn (mut ks KeyScheduler) early_secret(psk_bytes []u8) ![]u8 {
 }
 
 fn (mut ks KeyScheduler) ext_binder_key(early_secret []u8) ![]u8 {
-	ext_binder_key := ks.derive_secret(early_secret, tls13.extern_binder_label, tls13.empty_hsk_msgs)!
-	return ext_binder_key
+	if ks.extern_binderkey.len == 0 {
+		ks.extern_binderkey
+		ks.derive_secret(early_secret, tls13.extern_binder_label, tls13.empty_hsk_msgs)!
+	}
+
+	return ks.extern_binderkey
 }
 
 fn (mut ks KeyScheduler) resump_binder_key(early_secret []u8) ![]u8 {
-	res_binder_key := ks.derive_secret(early_secret, tls13.resump_binder_label, tls13.empty_hsk_msgs)!
-	return res_binder_key
+	if ks.resump_binderkey.len == 0 {
+		ks.resump_binderkey = ks.derive_secret(early_secret, tls13.resump_binder_label,
+			tls13.empty_hsk_msgs)!
+	}
+	return ks.resump_binderkey
 }
 
 // +-----> Derive-Secret(., "c e traffic", ClientHello) = client_early_traffic_secret
 fn (mut ks KeyScheduler) client_early_traffic_secret(early_secret []u8, ch ClientHello) ![]u8 {
 	hsk := HandshakePayload(ch).pack_to_handshake()!
-	client_early_ts := ks.derive_secret(early_secret, tls13.client_early_label, [hsk])!
-	return client_early_ts
+	if ks.cln_early_tsecret.len == 0 {
+		ks.cln_early_tsecret = ks.derive_secret(early_secret, tls13.client_early_label,
+			[hsk])!
+	}
+	return ks.cln_early_tsecret
 }
 
 // +-----> Derive-Secret(., "e exp master", ClientHello) = early_exporter_master_secret
@@ -325,14 +430,20 @@ fn (mut ks KeyScheduler) next_traffic_secret(traffic_secret []u8) ![]u8 {
 
 // Client Early 0-RTT
 //
-fn (mut ks KeyScheduler) client_early_write_key(client_early_tsecret []u8, key_length int) ![]u8 {
-	return ks.expand_label(client_early_tsecret, tls13.write_key_label, tls13.nullbytes,
-		key_length)!
+fn (mut ks KeyScheduler) client_early_write_key(cln_early_tsecret []u8, key_length int) ![]u8 {
+	if ks.cln_early_wrkey.len == 0 {
+		ks.cln_early_wrkey = ks.expand_label(cln_early_tsecret, tls13.write_key_label,
+			tls13.nullbytes, key_length)!
+	}
+	return ks.cln_early_wrkey
 }
 
-fn (mut ks KeyScheduler) client_early_write_iv(client_early_tsecret []u8, iv_length int) ![]u8 {
-	return ks.expand_label(client_early_tsecret, tls13.write_key_label, tls13.nullbytes,
-		iv_length)!
+fn (mut ks KeyScheduler) client_early_write_iv(cln_early_tsecret []u8, iv_length int) ![]u8 {
+	if ks.cln_early_wriv.len == 0 {
+		ks.cln_early_wriv = ks.expand_label(cln_early_tsecret, tls13.write_key_label,
+			tls13.nullbytes, iv_length)!
+	}
+	return ks.cln_early_wriv
 }
 
 // Handshake Record

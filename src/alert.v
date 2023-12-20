@@ -122,21 +122,20 @@ pub fn new_alert(level AlertLevel, desc AlertDescription) Alert {
 // AlertError is custom error type represents Alert
 struct AlertError {
 	Alert
-	msg string
 }
 
 // custom error types through the IError interface. The interface requires two methods: msg() string and code() int.
 // Every type that implements these methods can be used as an error
 fn (a AlertError) msg() string {
-	return 'Alert (${a.level.str()}:${a.desc.str()}): ${a.msg} }'
+	return 'Alert: ${a.level.str()}.${a.desc.str()}'
 }
 
 fn (a AlertError) code() int {
 	return int(a.desc)
 }
 
-fn tls_error(ae Alert, msg string) AlertError {
-	return AlertError{ae, msg}
+fn tls_error(ae Alert) AlertError {
+	return AlertError{ae}
 }
 
 fn (ad AlertDescription) str() string {

@@ -1,83 +1,53 @@
 module tls13
 
-// Tls 1.3 client state
-enum State {
-	closed               = 0
-	init                 = 1
-	start                = 2
-	wait_sh              = 3
-	wait_ee              = 4
-	wait_cert_or_certreq = 5 // wait for Certificate or CertificateRequest
-	wait_certificate     = 6
-	wait_certverify      = 7
-	wait_finished        = 8
-	end_early_data       = 9
-	connected            = 10
-	application_data     = 11
+// TLS 1.3 client state
+enum TlsState {
+	ts_closed                     = 0
+	ts_init                       = 1
+	ts_client_hello               = 2
+	ts_early_data                 = 3
+	ts_server_hello               = 4
+	ts_server_hello_2             = 5
+	ts_change_cipher_spec         = 6 // ccs is ignored in TLS 1.3
+	ts_encrypted_extensions       = 7
+	ts_server_certificate_request = 8
+	ts_server_certificate         = 9
+	ts_server_certificate_verify  = 10
+	ts_server_finished            = 11
+	ts_endof_early_data           = 12
+	ts_client_certificate         = 13
+	ts_client_certificate_verify  = 14
+	ts_client_finished            = 15
+	ts_key_update                 = 16
+	ts_connected                  = 17 // intermediate state
+	ts_application_data           = 18
+	ts_closing                    = 19
 }
 
-pub fn (s State) str() string {
-	match s {
-		.closed { return 'CLOSED' }
-		.init { return 'INIT' }
-		.start { return 'START' }
-		.wait_sh { return 'WAIT_FOR_SERVERHELLO' }
-		.wait_ee { return 'WAIT_FOR_ENCRYPTED_EXTENSIONS' }
-		.wait_cert_or_certreq { return 'WAIT_FOR_CERT_OR_CERTREQUEST' }
-		.wait_certificate { return 'WAIT_FOR_CERTIFICATE' }
-		.wait_certverify { return 'WAIT_FOR_CERT_VERIFY' }
-		.wait_finished { return 'WAIT_FOR_FINISHED' }
-		.end_early_data { return 'END_OF_EARLY_DATA' }
-		.connected { return 'CONNECTED' }
-		.application_data { return 'APPLICATION_DATA' }
-	}
+// tls_state returns current session state
+fn (ses Session) tls_state() TlsState {
+	return ses.tstate
 }
 
-// Session state routines
-//		
-// state returns the current state of the Session
-// TODO: for support concurrent access, add locking necessarily
-pub fn (ses Session) state() State {
-	return ses.state
+// on_closed_state returns true if session in .ts_closed state
+fn (ses Session) on_closed_state() bool {
+	return ses.tls_state() == .ts_closed
 }
 
-fn (ses Session) state_is_closed() bool {
-	return ses.state() == .closed
+// on_closing_state returns true if session in ongoing to .ts_closing state
+fn (ses Session) on_closing_state() bool {
+	return ses.tls_state() == .ts_closing
 }
 
-// change_to_state sets current state of the Session to new state
-fn (mut ses Session) change_to_state(new_state State) {
-	// if current state match with provided new state,
-	// just do nothing, otherwise, set state to new state.
-	if ses.state() == new_state {
+// change_tls_state does transition to `to` state
+fn (mut ses Session) change_tls_state(to TlsState) {
+	if ses.tstate == to {
 		return
 	}
-
-	ses.state = new_state
+	ses.tstate = to
 }
 
-// protection_is_active tells whether this tls context has an encryption
-// or decryption should be performed or not. For TLS 1.3, after the client
-// receives ServerHello message, encryption mechanism should be in active state onward.
-fn (mut ses Session) protection_is_active() bool {
-	return int(ses.state()) >= int(State.wait_ee)
-}
-
-// hsk_started tells whether handshake has been started
-fn (mut ses Session) hsk_started() bool {
-	return int(ses.state()) >= int(State.start)
-}
-
-// hsk_not_finished returns false if the Session is not in .connected state
-fn (mut ses Session) hsk_not_finished() bool {
-	return ses.hsk_started() && ses.state() != .connected
-}
-
-fn (mut ses Session) hsk_not_completed() bool {
-	return ses.hsk_started() && int(ses.state()) < int(State.application_data)
-}
-
-// reset_state resets Session state to .closed state
-fn (mut ses Session) reset_state() {
-	ses.change_to_state(.closed)
+// reset_tls_state resets back Session state to .ts_closed
+fn (mut ses Session) reset_tls_state() {
+	ses.change_tls_state(.ts_closed)
 }

@@ -3,7 +3,6 @@ module tls13
 import math
 import encoding.binary
 import blackshirt.buffer
-import blackshirt.hkdf
 
 const max_hkdf_label_length = 255
 
@@ -59,33 +58,6 @@ fn new_hkdf_label(label string, context []u8, length int) !HkdfLabel {
 	}
 	hl.verify()!
 	return hl
-}
-
-// hkdf_expand_label from RFC defined as HKDF-Expand-Label(Secret, Label, Context, Length) =
-//      HKDF-Expand(Secret, HkdfLabel, Length)
-//
-fn hkdf_expand_label(kdf hkdf.Hkdf, secret []u8, label string, context []u8, length int) ![]u8 {
-	hk_lbl := new_hkdf_label(label, context, length)!
-	info := hk_lbl.encode()!
-	// hk_lbl is encoded hkdflabel
-	out := kdf.expand(secret, info, length)!
-	return out
-}
-
-// Derive-Secret(Secret, Label, Messages) =
-//     HKDF-Expand-Label(Secret, Label,  Transcript-Hash(Messages), Hash.length)
-fn hkdf_derive_secret(kdf hkdf.Hkdf, secret []u8, label string, messages []u8) ![]u8 {
-	mut tsh := new_transcripter(kdf.hasher())!
-	defer {
-		tsh.free()
-	}
-	n := tsh.write(messages)!
-	if n != messages.len {
-		return error('not all messages writen by Transcripter')
-	}
-	trc_hash := tsh.checksum()
-	out := hkdf_expand_label(kdf, secret, label, trc_hash, kdf.size()!)!
-	return out
 }
 
 fn (hl HkdfLabel) verify() ! {

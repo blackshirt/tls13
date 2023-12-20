@@ -17,7 +17,6 @@ enum NamedGroup {
 	ffdhe4096 = 0x0102
 	ffdhe6144 = 0x0103
 	ffdhe8192 = 0x0104
-	unknown   = 0xffff
 }
 
 fn (ng NamedGroup) packed_length() int {
@@ -42,6 +41,22 @@ fn NamedGroup.unpack(b []u8) !NamedGroup {
 	v := binary.big_endian_u16(b)
 	out := unsafe { NamedGroup(v) }
 	return out
+}
+
+fn NamedGroup.from(val u16) !NamedGroup {
+	match val {
+		0x0017 { return NamedGroup.secp256r1 }
+		0x0018 { return NamedGroup.secp384r1 }
+		0x0019 { return NamedGroup.secp521r1 }
+		0x001D { return NamedGroup.x25519 }
+		0x001E { return NamedGroup.x448 }
+		0x0100 { return NamedGroup.ffdhe2048 }
+		0x0101 { return NamedGroup.ffdhe3072 }
+		0x0102 { return NamedGroup.ffdhe4096 }
+		0x0103 { return NamedGroup.ffdhe6144 }
+		0x0104 { return NamedGroup.ffdhe8192 }
+		else { return error('Unknown NamedGroup:${val}') }
+	}
 }
 
 // NamedGroupList = NamedGroup named_group_list<2..2^16-1>;
@@ -167,9 +182,6 @@ fn (g NamedGroup) curve() !ecdhe.Curve {
 		}
 		.ffdhe8192 {
 			return ecdhe.Curve.ffdhe8192
-		}
-		else {
-			return error('unknown group')
 		}
 	}
 }

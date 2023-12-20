@@ -346,7 +346,7 @@ fn test_keyderivation_server_calculate_finished_key_and_verify_data_of_finished(
 		0xd8, 0xcd, 0xc1, 0x9f, 0xc8]
 	assert finkey == exp_finkey
 
-	srv_finkey := ks.server_handshake_finished_key(srv_hsk_traffsecret, hctx)!
+	srv_finkey := ks.server_finished_key(srv_hsk_traffsecret)!
 	assert srv_finkey == finkey
 
 	// messages << tls13.encrypted_extension_msg
@@ -477,6 +477,7 @@ fn test_keyderivation_derive_write_traffic_keys_and_iv_for_app_data() ! {
 	early_secret := ks.early_secret(nullbytes)!
 	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
 	master_secret := ks.master_secret(hsk_secret)!
+	srv_app_tsecret := ks.server_application_traffic_secret_0(master_secret, hsk_ctx)!
 
 	// key info (13 octets):  00 10 09 74 6c 73 31 33 20 6b 65 79 00
 	keyinfo := [u8(0x00), 0x10, 0x09, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x6b, 0x65, 0x79, 0x00]
@@ -486,9 +487,8 @@ fn test_keyderivation_derive_write_traffic_keys_and_iv_for_app_data() ! {
 	assert keyinfo == info
 	key_length := khk_label.length
 
-	// server_application_write_key(master_secret []u8, hsk_ctx, length int) ![]u8 {
-	server_application_key := ks.server_application_write_key(master_secret, hsk_ctx,
-		key_length)!
+	// server_application_write_key(srv_app_tsecret []u8, key_length int) ![]u8 {
+	server_application_key := ks.server_application_write_key(srv_app_tsecret, key_length)!
 	expected_srv_appkey := [u8(0x9f), 0x02, 0x28, 0x3b, 0x6c, 0x9c, 0x07, 0xef, 0xc2, 0x6b, 0xb9,
 		0xf2, 0xac, 0x92, 0xe3, 0x56]
 	assert server_application_key == expected_srv_appkey
@@ -503,7 +503,8 @@ fn test_keyderivation_derive_write_traffic_keys_and_iv_for_app_data() ! {
 	expected_srv_appiv := [u8(0xcf), 0x78, 0x2b, 0x88, 0xdd, 0x83, 0x54, 0x9a, 0xad, 0xf1, 0xe9,
 		0x84]
 
-	srv_appiv := ks.server_application_write_iv(master_secret, hsk_ctx, ivlength)!
+	// erver_application_write_iv(srv_app_tsecret []u8, iv_length int) ![]u8 {
+	srv_appiv := ks.server_application_write_iv(srv_app_tsecret, ivlength)!
 	assert srv_appiv == expected_srv_appiv
 }
 
@@ -631,8 +632,9 @@ fn test_kd_client_calculate_tls13_finished() ! {
 	expected_client_finkey := hex.decode('b80ad01015fb2f0bd65ff7d4da5d6bf83f84821d1f87fdc7d3c75b5a7b42d9c4')!
 	assert client_finkey == expected_client_finkey
 
-	// client_handshake_finished_key(hsk_secret []u8, messages []u8) ![]u8 {
-	client_hsk_finkey := ks.client_handshake_finished_key(hsk_secret, hello_ctx)!
+	cln_hsk_tsecret := ks.client_handshake_traffic_secret(hsk_secret, hello_ctx)!
+	// client_finished_key(cln_hsk_tsecret []u8) ![]u8 {
+	client_hsk_finkey := ks.client_finished_key(cln_hsk_tsecret)!
 	assert client_hsk_finkey == client_finkey
 
 	// adding more messages
@@ -712,14 +714,16 @@ fn test_kd_client_application_write_key_and_iv() ! {
 		0xb7, 0xc1, 0x75, 0x04, 0xa5]
 	assert secret == expected_secret
 
-	client_wkey := ks.client_application_write_key(master_secret, hello_ctx, 16)!
+	client_app_tsecret := ks.client_application_traffic_secret_0(master_secret, hello_ctx)!
+	// client_application_write_key(cln_app_tsecret []u8, key_length int) ![]u8 {
+	client_wkey := ks.client_application_write_key(client_app_tsecret, 16)!
 	expected_client_wkey := [u8(0x17), 0x42, 0x2d, 0xda, 0x59, 0x6e, 0xd5, 0xd9, 0xac, 0xd8, 0x90,
 		0xe3, 0xc6, 0x3f, 0x50, 0x51]
 	assert client_wkey == expected_client_wkey
 
 	// iv info (12 octets):  00 0c 08 74 6c 73 31 33 20 69 76 00
 	// iv expanded (12 octets):  5b 78 92 3d ee 08 57 90 33 e5 23 d9
-	client_wiv := ks.client_application_write_iv(master_secret, hello_ctx, 12)!
+	client_wiv := ks.client_application_write_iv(client_app_tsecret, 12)!
 	expected_client_wiv := [u8(0x5b), 0x78, 0x92, 0x3d, 0xee, 0x08, 0x57, 0x90, 0x33, 0xe5, 0x23,
 		0xd9]
 	assert client_wiv == expected_client_wiv

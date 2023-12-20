@@ -65,6 +65,14 @@ fn PskKeyExchangeMode.unpack(b []u8) !PskKeyExchangeMode {
 	return unsafe { PskKeyExchangeMode(b[0]) }
 }
 
+fn PskKeyExchangeMode.from(b u8) !PskKeyExchangeMode {
+	match b {
+		0x00 { return .psk_ke }
+		0x01 { return .psk_dhe_ke }
+		else { return error('Unsupported PskKeyExchangeMode value; $(b)') }
+	}
+}
+
 fn (pxs []PskKeyExchangeMode) packed_length() int {
 	mut n := 0
 	n += 1

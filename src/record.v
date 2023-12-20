@@ -30,7 +30,7 @@ fn ContentType.unpack(b []u8) !ContentType {
 	return unsafe { ContentType(b[0]) }
 }
 
-fn ContentType.from(v u8) ContentType {
+fn ContentType.from(v u8) !ContentType {
 	match v {
 		u8(0x14) {
 			return ContentType.change_cipher_spec
@@ -52,7 +52,7 @@ fn ContentType.from(v u8) ContentType {
 		}
 		// otherwise, return as is or an error ?
 		else {
-			return unsafe { ContentType(v) }
+			return error('Bad ContentType value:${v}')
 		}
 	}
 }
@@ -109,6 +109,10 @@ mut:
 	// Should this length to be relaxed, so its can handle fragmented record ?
 	length  int // u16
 	payload []u8
+}
+
+pub fn (rec TLSRecord) str() string {
+	return 'TLSRecord:type=${rec.ctn_type}:length=${rec.length}:payload=${rec.payload.bytestr()}'
 }
 
 fn (r TLSRecord) packed_length() int {
@@ -284,6 +288,10 @@ fn TLSPlaintext.from_ccs(c ChangeCipherSpec) !TLSPlaintext {
 	}
 
 	return rec
+}
+
+pub fn (p TLSPlaintext) str() string {
+	return 'TLSPlaintext:type=${p.ctn_type}:length=${p.length}:fragment=${p.fragment.bytestr()}'
 }
 
 fn (p TLSPlaintext) to_tls_record() TLSRecord {
@@ -578,8 +586,7 @@ fn find_content_type_position(b []u8) !int {
 	}
 	// If a receiving implementation does not find a non-zero octet in the cleartext,
 	// it MUST terminate the connection with an "unexpected_message" alert.
-	ae := new_alert(.fatal, .unexpected_message)
-	return tls_error(ae, '${@FN} not found non-null byte')
+	return error('${@FN} not found non-null byte')
 }
 
 // padding policy for handling of the record's padding

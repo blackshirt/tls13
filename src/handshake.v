@@ -6,11 +6,12 @@ import encoding.binary
 import blackshirt.buffer
 import blackshirt.u24
 
-// TLS magic constant used for downgrade protection mechanism.
 const helloretry_magic = [u8(0xCF), 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C,
 	0x02, 0x1E, 0x65, 0xB8, 0x91, 0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09,
 	0xE2, 0xC8, 0xA8, 0x33, 0x9C]
+
 const tls12_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x01]
+
 const tls11_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x00]
 
 // HandshakeType = u8
@@ -461,37 +462,21 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	// A client which receives a cipher suite that was not offered MUST abort the handshake
 	if !ch.cipher_suites.is_exist(sh.cipher_suite) {
-		ae := Alert{
-			level: .fatal
-			desc: .illegal_parameter
-		}
-		return tls_error(ae, "ClientHello.cipher_suites doesn't contains server cipher_suite")
+		return error("ClientHello.cipher_suites doesn't contains server cipher_suite")
 	}
 	// TLS 1.3 clients receiving a ServerHello indicating TLS 1.2 or below
 	// MUST check that the last 8 bytes are not equal to either of these values.
 	if sh.random.len != 32 {
-		ae := Alert{
-			level: .fatal
-			desc: .illegal_parameter
-		}
-		return tls_error(ae, 'Bad ServerHello.random length')
+		return error('Bad ServerHello.random length')
 	}
 	last8 := sh.random[24..31]
 	if hmac.equal(last8, tls13.tls12_random_magic) || hmac.equal(last8, tls13.tls12_random_magic) {
-		ae := Alert{
-			level: .fatal
-			desc: .unexpected_message
-		}
-		return tls_error(ae, 'Bad downgrade ServerHello.random detected')
+		return error('Bad downgrade ServerHello.random detected')
 	}
 	// A client which receives a legacy_session_id_echo field that does not match what it sent
 	// in the ClientHello MUST abort the handshake with an "illegal_parameter" alert.
 	if !hmac.equal(ch.legacy_session_id, sh.legacy_session_id_echo) {
-		ae := Alert{
-			level: .fatal
-			desc: .illegal_parameter
-		}
-		return tls_error(ae, "Server and Client sessid doesn't match")
+		return error("Server and Client sessid doesn't match")
 	}
 	// If the "supported_versions" extension in the ServerHello contains a version not offered
 	// by the client or contains a version prior to TLS 1.3, the client MUST abort
@@ -501,11 +486,7 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 		server_spv := sh.extensions.map(it.tipe == .supported_versions)
 		client_spv := ch.extensions.map(it.tipe == .supported_versions)
 		if server_spv != client_spv {
-			ae := Alert{
-				level: .fatal
-				desc: .illegal_parameter
-			}
-			return tls_error(ae, "Server and Client SupportedVersion doesn't match")
+			return error("Server and Client SupportedVersion doesn't match")
 		}
 	}
 	return true

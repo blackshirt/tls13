@@ -6,11 +6,14 @@ import crypto.sha256
 import crypto.sha512
 
 const min_hello_ctx = 2
+
 const ful_hello_ctx = 4
+
 const min_middle_ctx = 6
+
 const min_full_ctx = 7
 
-// Transcripter mimics unpublished structure from standard vlib in a `cyrpto.hash.Digest`
+// its mimics unpubliced of standard cyrpto.hash.Digest
 interface Transcripter {
 	size() int
 	block_size() int
@@ -41,6 +44,7 @@ fn new_transcripter(h crypto.Hash) !&Transcripter {
 // server CertificateVerify(15), server Finished(20), EndOfEarlyData(5), client
 // Certificate(11), client CertificateVerify(15), client Finished(20).
 const fullhsk_msgtype_sum = 120
+
 const fullhsk_messages_len = 13
 
 // HelloContext is arrays of Handshake messages start from first ClientHello to last ServerHello,
@@ -387,6 +391,10 @@ fn (hs []Handshake) take_upto_middle_context() !([]Handshake, []Handshake) {
 	return tomid_ctx, rest_ctx
 }
 
+fn (hs []Handshake) contains(msg_type HandshakeType) bool {
+	return hs.any(it.msg_type == msg_type)
+}
+
 fn (hs []Handshake) contains_encrypted_ext() bool {
 	return hs.contains_exactlyone_msgtype(.encrypted_extensions)
 }
@@ -449,10 +457,6 @@ fn (hs []Handshake) pack_handshakes_msg(c crypto.Hash) ![]u8 {
 		out << hs[i].pack()!
 	}
 	return out
-}
-
-fn (mut hs []Handshake) clear() {
-	hs.clear()
 }
 
 // append_msg append handshake message m to existing handshake arrays.
