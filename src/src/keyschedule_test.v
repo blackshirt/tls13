@@ -1,0 +1,854 @@
+module tls13
+
+import crypto
+import encoding.hex
+import blackshirt.ecdhe
+
+// This key derivation test, mostly based on Example Handshake Traces for TLS 1.3 from RFC 8448
+// see https://datatracker.ietf.org/doc/html/rfc8448 for more detail
+//
+const client_x25519_privkey = [u8(0x49), 0xaf, 0x42, 0xba, 0x7f, 0x79, 0x94, 0x85, 0x2d, 0x71,
+	0x3e, 0xf2, 0x78, 0x4b, 0xcb, 0xca, 0xa7, 0x91, 0x1d, 0xe2, 0x6a, 0xdc, 0x56, 0x42, 0xcb, 0x63,
+	0x45, 0x40, 0xe7, 0xea, 0x50, 0x05]
+
+const client_x25519_pubkey = [u8(0x99), 0x38, 0x1d, 0xe5, 0x60, 0xe4, 0xbd, 0x43, 0xd2, 0x3d, 0x8e,
+	0x43, 0x5a, 0x7d, 0xba, 0xfe, 0xb3, 0xc0, 0x6e, 0x51, 0xc1, 0x3c, 0xae, 0x4d, 0x54, 0x13, 0x69,
+	0x1e, 0x52, 0x9a, 0xaf, 0x2c]
+
+const server_x25519_privkey = [u8(0xb1), 0x58, 0x0e, 0xea, 0xdf, 0x6d, 0xd5, 0x89, 0xb8, 0xef,
+	0x4f, 0x2d, 0x56, 0x52, 0x57, 0x8c, 0xc8, 0x10, 0xe9, 0x98, 0x01, 0x91, 0xec, 0x8d, 0x05, 0x83,
+	0x08, 0xce, 0xa2, 0x16, 0xa2, 0x1e]
+
+const server_x25519_pubkey = [u8(0xc9), 0x82, 0x88, 0x76, 0x11, 0x20, 0x95, 0xfe, 0x66, 0x76, 0x2b,
+	0xdb, 0xf7, 0xc6, 0x72, 0xe1, 0x56, 0xd6, 0xcc, 0x25, 0x3b, 0x83, 0x3d, 0xf1, 0xdd, 0x69, 0xb1,
+	0xb0, 0x4e, 0x75, 0x1f, 0x0f]
+
+// shared secret from server privkey and client pubkey above
+const shared_secret = [u8(0x8b), 0xd4, 0x05, 0x4f, 0xb5, 0x5b, 0x9d, 0x63, 0xfd, 0xfb, 0xac, 0xf9,
+	0xf0, 0x4b, 0x9f, 0x0d, 0x35, 0xe6, 0xd6, 0x3f, 0x53, 0x75, 0x63, 0xef, 0xd4, 0x62, 0x72, 0x90,
+	0x0f, 0x89, 0x49, 0x2d]
+
+const clienthello_msg = [u8(0x01), 0x00, 0x00, 0xc0, 0x03, 0x03, 0xcb, 0x34, 0xec, 0xb1, 0xe7,
+	0x81, 0x63, 0xba, 0x1c, 0x38, 0xc6, 0xda, 0xcb, 0x19, 0x6a, 0x6d, 0xff, 0xa2, 0x1a, 0x8d, 0x99,
+	0x12, 0xec, 0x18, 0xa2, 0xef, 0x62, 0x83, 0x02, 0x4d, 0xec, 0xe7, 0x00, 0x00, 0x06, 0x13, 0x01,
+	0x13, 0x03, 0x13, 0x02, 0x01, 0x00, 0x00, 0x91, 0x00, 0x00, 0x00, 0x0b, 0x00, 0x09, 0x00, 0x00,
+	0x06, 0x73, 0x65, 0x72, 0x76, 0x65, 0x72, 0xff, 0x01, 0x00, 0x01, 0x00, 0x00, 0x0a, 0x00, 0x14,
+	0x00, 0x12, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x19, 0x01, 0x00, 0x01, 0x01, 0x01, 0x02,
+	0x01, 0x03, 0x01, 0x04, 0x00, 0x23, 0x00, 0x00, 0x00, 0x33, 0x00, 0x26, 0x00, 0x24, 0x00, 0x1d,
+	0x00, 0x20, 0x99, 0x38, 0x1d, 0xe5, 0x60, 0xe4, 0xbd, 0x43, 0xd2, 0x3d, 0x8e, 0x43, 0x5a, 0x7d,
+	0xba, 0xfe, 0xb3, 0xc0, 0x6e, 0x51, 0xc1, 0x3c, 0xae, 0x4d, 0x54, 0x13, 0x69, 0x1e, 0x52, 0x9a,
+	0xaf, 0x2c, 0x00, 0x2b, 0x00, 0x03, 0x02, 0x03, 0x04, 0x00, 0x0d, 0x00, 0x20, 0x00, 0x1e, 0x04,
+	0x03, 0x05, 0x03, 0x06, 0x03, 0x02, 0x03, 0x08, 0x04, 0x08, 0x05, 0x08, 0x06, 0x04, 0x01, 0x05,
+	0x01, 0x06, 0x01, 0x02, 0x01, 0x04, 0x02, 0x05, 0x02, 0x06, 0x02, 0x02, 0x02, 0x00, 0x2d, 0x00,
+	0x02, 0x01, 0x01, 0x00, 0x1c, 0x00, 0x02, 0x40, 0x01]
+
+const serverhello_msg = [u8(0x02), 0x00, 0x00, 0x56, 0x03, 0x03, 0xa6, 0xaf, 0x06, 0xa4, 0x12,
+	0x18, 0x60, 0xdc, 0x5e, 0x6e, 0x60, 0x24, 0x9c, 0xd3, 0x4c, 0x95, 0x93, 0x0c, 0x8a, 0xc5, 0xcb,
+	0x14, 0x34, 0xda, 0xc1, 0x55, 0x77, 0x2e, 0xd3, 0xe2, 0x69, 0x28, 0x00, 0x13, 0x01, 0x00, 0x00,
+	0x2e, 0x00, 0x33, 0x00, 0x24, 0x00, 0x1d, 0x00, 0x20, 0xc9, 0x82, 0x88, 0x76, 0x11, 0x20, 0x95,
+	0xfe, 0x66, 0x76, 0x2b, 0xdb, 0xf7, 0xc6, 0x72, 0xe1, 0x56, 0xd6, 0xcc, 0x25, 0x3b, 0x83, 0x3d,
+	0xf1, 0xdd, 0x69, 0xb1, 0xb0, 0x4e, 0x75, 0x1f, 0x0f, 0x00, 0x2b, 0x00, 0x02, 0x03, 0x04]
+
+const encrypted_extension_msg = [u8(0x08), 0x00, 0x00, 0x24, 0x00, 0x22, 0x00, 0x0a, 0x00, 0x14,
+	0x00, 0x12, 0x00, 0x1d, 0x00, 0x17, 0x00, 0x18, 0x00, 0x19, 0x01, 0x00, 0x01, 0x01, 0x01, 0x02,
+	0x01, 0x03, 0x01, 0x04, 0x00, 0x1c, 0x00, 0x02, 0x40, 0x01, 0x00, 0x00, 0x00, 0x00]
+
+const server_certificate_msg = [u8(0x0b), 0x00, 0x01, 0xb9, 0x00, 0x00, 0x01, 0xb5, 0x00, 0x01,
+	0xb0, 0x30, 0x82, 0x01, 0xac, 0x30, 0x82, 0x01, 0x15, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01,
+	0x02, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b, 0x05, 0x00,
+	0x30, 0x0e, 0x31, 0x0c, 0x30, 0x0a, 0x06, 0x03, 0x55, 0x04, 0x03, 0x13, 0x03, 0x72, 0x73, 0x61,
+	0x30, 0x1e, 0x17, 0x0d, 0x31, 0x36, 0x30, 0x37, 0x33, 0x30, 0x30, 0x31, 0x32, 0x33, 0x35, 0x39,
+	0x5a, 0x17, 0x0d, 0x32, 0x36, 0x30, 0x37, 0x33, 0x30, 0x30, 0x31, 0x32, 0x33, 0x35, 0x39, 0x5a,
+	0x30, 0x0e, 0x31, 0x0c, 0x30, 0x0a, 0x06, 0x03, 0x55, 0x04, 0x03, 0x13, 0x03, 0x72, 0x73, 0x61,
+	0x30, 0x81, 0x9f, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+	0x05, 0x00, 0x03, 0x81, 0x8d, 0x00, 0x30, 0x81, 0x89, 0x02, 0x81, 0x81, 0x00, 0xb4, 0xbb, 0x49,
+	0x8f, 0x82, 0x79, 0x30, 0x3d, 0x98, 0x08, 0x36, 0x39, 0x9b, 0x36, 0xc6, 0x98, 0x8c, 0x0c, 0x68,
+	0xde, 0x55, 0xe1, 0xbd, 0xb8, 0x26, 0xd3, 0x90, 0x1a, 0x24, 0x61, 0xea, 0xfd, 0x2d, 0xe4, 0x9a,
+	0x91, 0xd0, 0x15, 0xab, 0xbc, 0x9a, 0x95, 0x13, 0x7a, 0xce, 0x6c, 0x1a, 0xf1, 0x9e, 0xaa, 0x6a,
+	0xf9, 0x8c, 0x7c, 0xed, 0x43, 0x12, 0x09, 0x98, 0xe1, 0x87, 0xa8, 0x0e, 0xe0, 0xcc, 0xb0, 0x52,
+	0x4b, 0x1b, 0x01, 0x8c, 0x3e, 0x0b, 0x63, 0x26, 0x4d, 0x44, 0x9a, 0x6d, 0x38, 0xe2, 0x2a, 0x5f,
+	0xda, 0x43, 0x08, 0x46, 0x74, 0x80, 0x30, 0x53, 0x0e, 0xf0, 0x46, 0x1c, 0x8c, 0xa9, 0xd9, 0xef,
+	0xbf, 0xae, 0x8e, 0xa6, 0xd1, 0xd0, 0x3e, 0x2b, 0xd1, 0x93, 0xef, 0xf0, 0xab, 0x9a, 0x80, 0x02,
+	0xc4, 0x74, 0x28, 0xa6, 0xd3, 0x5a, 0x8d, 0x88, 0xd7, 0x9f, 0x7f, 0x1e, 0x3f, 0x02, 0x03, 0x01,
+	0x00, 0x01, 0xa3, 0x1a, 0x30, 0x18, 0x30, 0x09, 0x06, 0x03, 0x55, 0x1d, 0x13, 0x04, 0x02, 0x30,
+	0x00, 0x30, 0x0b, 0x06, 0x03, 0x55, 0x1d, 0x0f, 0x04, 0x04, 0x03, 0x02, 0x05, 0xa0, 0x30, 0x0d,
+	0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0b, 0x05, 0x00, 0x03, 0x81, 0x81,
+	0x00, 0x85, 0xaa, 0xd2, 0xa0, 0xe5, 0xb9, 0x27, 0x6b, 0x90, 0x8c, 0x65, 0xf7, 0x3a, 0x72, 0x67,
+	0x17, 0x06, 0x18, 0xa5, 0x4c, 0x5f, 0x8a, 0x7b, 0x33, 0x7d, 0x2d, 0xf7, 0xa5, 0x94, 0x36, 0x54,
+	0x17, 0xf2, 0xea, 0xe8, 0xf8, 0xa5, 0x8c, 0x8f, 0x81, 0x72, 0xf9, 0x31, 0x9c, 0xf3, 0x6b, 0x7f,
+	0xd6, 0xc5, 0x5b, 0x80, 0xf2, 0x1a, 0x03, 0x01, 0x51, 0x56, 0x72, 0x60, 0x96, 0xfd, 0x33, 0x5e,
+	0x5e, 0x67, 0xf2, 0xdb, 0xf1, 0x02, 0x70, 0x2e, 0x60, 0x8c, 0xca, 0xe6, 0xbe, 0xc1, 0xfc, 0x63,
+	0xa4, 0x2a, 0x99, 0xbe, 0x5c, 0x3e, 0xb7, 0x10, 0x7c, 0x3c, 0x54, 0xe9, 0xb9, 0xeb, 0x2b, 0xd5,
+	0x20, 0x3b, 0x1c, 0x3b, 0x84, 0xe0, 0xa8, 0xb2, 0xf7, 0x59, 0x40, 0x9b, 0xa3, 0xea, 0xc9, 0xd9,
+	0x1d, 0x40, 0x2d, 0xcc, 0x0c, 0xc8, 0xf8, 0x96, 0x12, 0x29, 0xac, 0x91, 0x87, 0xb4, 0x2b, 0x4d,
+	0xe1, 0x00, 0x00]
+
+const server_certverify_msg = [u8(0x0f), 0x00, 0x00, 0x84, 0x08, 0x04, 0x00, 0x80, 0x5a, 0x74,
+	0x7c, 0x5d, 0x88, 0xfa, 0x9b, 0xd2, 0xe5, 0x5a, 0xb0, 0x85, 0xa6, 0x10, 0x15, 0xb7, 0x21, 0x1f,
+	0x82, 0x4c, 0xd4, 0x84, 0x14, 0x5a, 0xb3, 0xff, 0x52, 0xf1, 0xfd, 0xa8, 0x47, 0x7b, 0x0b, 0x7a,
+	0xbc, 0x90, 0xdb, 0x78, 0xe2, 0xd3, 0x3a, 0x5c, 0x14, 0x1a, 0x07, 0x86, 0x53, 0xfa, 0x6b, 0xef,
+	0x78, 0x0c, 0x5e, 0xa2, 0x48, 0xee, 0xaa, 0xa7, 0x85, 0xc4, 0xf3, 0x94, 0xca, 0xb6, 0xd3, 0x0b,
+	0xbe, 0x8d, 0x48, 0x59, 0xee, 0x51, 0x1f, 0x60, 0x29, 0x57, 0xb1, 0x54, 0x11, 0xac, 0x02, 0x76,
+	0x71, 0x45, 0x9e, 0x46, 0x44, 0x5c, 0x9e, 0xa5, 0x8c, 0x18, 0x1e, 0x81, 0x8e, 0x95, 0xb8, 0xc3,
+	0xfb, 0x0b, 0xf3, 0x27, 0x84, 0x09, 0xd3, 0xbe, 0x15, 0x2a, 0x3d, 0xa5, 0x04, 0x3e, 0x06, 0x3d,
+	0xda, 0x65, 0xcd, 0xf5, 0xae, 0xa2, 0x0d, 0x53, 0xdf, 0xac, 0xd4, 0x2f, 0x74, 0xf3]
+
+const server_finished_msg = [u8(0x14), 0x00, 0x00, 0x20, 0x9b, 0x9b, 0x14, 0x1d, 0x90, 0x63, 0x37,
+	0xfb, 0xd2, 0xcb, 0xdc, 0xe7, 0x1d, 0xf4, 0xde, 0xda, 0x4a, 0xb4, 0x2c, 0x30, 0x95, 0x72, 0xcb,
+	0x7f, 0xff, 0xee, 0x54, 0x54, 0xb7, 0x8f, 0x07, 0x18]
+
+const client_finished_msg = [u8(0x14), 0x00, 0x00, 0x20, 0xa8, 0xec, 0x43, 0x6d, 0x67, 0x76, 0x34,
+	0xae, 0x52, 0x5a, 0xc1, 0xfc, 0xeb, 0xe1, 0x1a, 0x03, 0x9e, 0xc1, 0x76, 0x94, 0xfa, 0xc6, 0xe9,
+	0x85, 0x27, 0xb6, 0x42, 0xf2, 0xed, 0xd5, 0xce, 0x61]
+
+fn test_keyschedule_early_secret() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	early_secret := ks.early_secret(nullbytes)!
+
+	exp_early_secret := [u8(0x33), 0xad, 0x0a, 0x1c, 0x60, 0x7e, 0xc0, 0x3b, 0x09, 0xe6, 0xcd,
+		0x98, 0x93, 0x68, 0x0c, 0xe2, 0x10, 0xad, 0xf3, 0x00, 0xaa, 0x1f, 0x26, 0x60, 0xe1, 0xb2,
+		0x2e, 0x10, 0xf1, 0x70, 0xf9, 0x2a]
+
+	assert early_secret == exp_early_secret
+}
+
+fn test_keyschedule_derived_keys_for_handshake() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	expected_expanded := [u8(0x6f), 0x26, 0x15, 0xa1, 0x08, 0xc7, 0x02, 0xc5, 0x67, 0x8f, 0x54,
+		0xfc, 0x9d, 0xba, 0xb6, 0x97, 0x16, 0xc0, 0x76, 0x18, 0x9c, 0x48, 0x25, 0x0c, 0xeb, 0xea,
+		0xc3, 0x57, 0x6c, 0x36, 0x11, 0xba]
+	early_secret := ks.early_secret(nullbytes)!
+	derived_sec := ks.derive_secret(early_secret, derived_label, empty_hsk_msgs)!
+
+	assert derived_sec == expected_expanded
+}
+
+fn test_keyschedule_handshake_secret() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// key exchanger
+	kx := ecdhe.new_x25519_exchanger()
+	// server part
+	srv_pvkey := kx.private_key_from_key(tls13.server_x25519_privkey)!
+	srv_pbkey := kx.public_key(srv_pvkey)!
+	assert srv_pbkey.bytes()! == tls13.server_x25519_pubkey
+	// client part
+	client_pvkey := kx.private_key_from_key(tls13.client_x25519_privkey)!
+	client_pbkey := kx.public_key(client_pvkey)!
+	assert client_pbkey.bytes()! == tls13.client_x25519_pubkey
+
+	// ecdhe_bytes is shared_secret
+	ecdhe_bytes := kx.shared_secret(srv_pvkey, client_pbkey)!
+	assert ecdhe_bytes == tls13.shared_secret
+
+	// salt (32 octets):  6f 26 15 a1 08 c7 02 c5 67 8f 54 fc 9d ba b6 97
+	//     16 c0 76 18 9c 48 25 0c eb ea c3 57 6c 36 11 ba
+	expected_salt := [u8(0x6f), 0x26, 0x15, 0xa1, 0x08, 0xc7, 0x02, 0xc5, 0x67, 0x8f, 0x54, 0xfc,
+		0x9d, 0xba, 0xb6, 0x97, 0x16, 0xc0, 0x76, 0x18, 0x9c, 0x48, 0x25, 0x0c, 0xeb, 0xea, 0xc3,
+		0x57, 0x6c, 0x36, 0x11, 0xba]
+
+	early_secret := ks.early_secret(nullbytes)!
+	derived_sec := ks.derive_secret(early_secret, derived_label, empty_hsk_msgs)!
+
+	assert derived_sec == expected_salt
+
+	// expected secret
+	//  secret (32 octets):  1d c8 26 e9 36 06 aa 6f dc 0a ad c1 2f 74 1b
+	//     01 04 6a a6 b9 9f 69 1e d2 21 a9 f0 ca 04 3f be ac
+	expected_secret := [u8(0x1d), 0xc8, 0x26, 0xe9, 0x36, 0x06, 0xaa, 0x6f, 0xdc, 0x0a, 0xad, 0xc1,
+		0x2f, 0x74, 0x1b, 0x01, 0x04, 0x6a, 0xa6, 0xb9, 0x9f, 0x69, 0x1e, 0xd2, 0x21, 0xa9, 0xf0,
+		0xca, 0x04, 0x3f, 0xbe, 0xac]
+
+	// handshake_secret(early_secret []u8, ecdhe_bytes []u8)
+	handshake_secret := ks.handshake_secret(early_secret, ecdhe_bytes)!
+	assert handshake_secret == expected_secret
+}
+
+fn test_handshakekeys_client_handshake_traffic_secret() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// messages is [ClientHello, ServerHello]
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	hctx, _ := ks.hsx.take_hello_context()!
+	// messages := hctx.pack_hello_context(crypto.Hash.sha256)!
+
+	// client_handshake_traffic_secret(hsk_secret []u8, hello_ctx HelloContext)
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	keys := ks.client_handshake_traffic_secret(hsk_secret, hctx)!
+
+	// expected
+	// expanded (32 octets):  b3 ed db 12 6e 06 7f 35 a7 80 b3 ab f4 5e
+	//     2d 8f 3b 1a 95 07 38 f5 2e 96 00 74 6a 0e 27 a5 5a 21
+	expected := [u8(0xb3), 0xed, 0xdb, 0x12, 0x6e, 0x06, 0x7f, 0x35, 0xa7, 0x80, 0xb3, 0xab, 0xf4,
+		0x5e, 0x2d, 0x8f, 0x3b, 0x1a, 0x95, 0x07, 0x38, 0xf5, 0x2e, 0x96, 0x00, 0x74, 0x6a, 0x0e,
+		0x27, 0xa5, 0x5a, 0x21]
+
+	assert keys == expected
+}
+
+//  {server}  derive secret "tls13 s hs traffic":
+fn test_keyschedule_server_handshake_traffic_secret() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// messages is [ClientHello, ServerHello]
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	hctx, _ := ks.hsx.take_hello_context()!
+	// messages := hctx.pack_hello_context(crypto.Hash.sha256)!
+
+	// server_handshake_traffic_secret(hsk_secret []u8, HelloContext)
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	keys := ks.server_handshake_traffic_secret(hsk_secret, hctx)!
+
+	// expected
+	// expanded (32 octets): b6 7b 7d 69 0c c1 6c 4e 75 e5 42 13 cb 2d
+	//     37 b4 e9 c9 12 bc de d9 10 5d 42 be fd 59 d3 91 ad 38
+	expected := [u8(0xb6), 0x7b, 0x7d, 0x69, 0x0c, 0xc1, 0x6c, 0x4e, 0x75, 0xe5, 0x42, 0x13, 0xcb,
+		0x2d, 0x37, 0xb4, 0xe9, 0xc9, 0x12, 0xbc, 0xde, 0xd9, 0x10, 0x5d, 0x42, 0xbe, 0xfd, 0x59,
+		0xd3, 0x91, 0xad, 0x38]
+
+	assert keys == expected
+}
+
+fn test_keyschedule_derived_keys_for_master() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	expected_expanded := [u8(0x43), 0xde, 0x77, 0xe0, 0xc7, 0x77, 0x13, 0x85, 0x9a, 0x94, 0x4d,
+		0xb9, 0xdb, 0x25, 0x90, 0xb5, 0x31, 0x90, 0xa6, 0x5b, 0x3e, 0xe2, 0xe4, 0xf1, 0x2d, 0xd7,
+		0xa0, 0xbb, 0x7c, 0xe2, 0x54, 0xb4]
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+
+	// derive_secret(secret []u8, label string, messages []Handshake)!
+	drv_secret := ks.derive_secret(hsk_secret, derived_label, empty_hsk_msgs)!
+	assert drv_secret == expected_expanded
+}
+
+// {server}  extract secret "master": master_secret(psk_bytes []u8, ecdhe_bytes []u8)
+fn test_keyschedule_master_secret() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+
+	master_secret := ks.master_secret(hsk_secret)!
+
+	exp_master_secret := [u8(0x18), 0xdf, 0x06, 0x84, 0x3d, 0x13, 0xa0, 0x8b, 0xf2, 0xa4, 0x49,
+		0x84, 0x4c, 0x5f, 0x8a, 0x47, 0x80, 0x01, 0xbc, 0x4d, 0x4c, 0x62, 0x79, 0x84, 0xd5, 0xa4,
+		0x1d, 0xa8, 0xd0, 0x40, 0x29, 0x19]
+	// secret (32 octets):  18 df 06 84 3d 13 a0 8b f2 a4 49 84 4c 5f 8a
+	//     47 80 01 bc 4d 4c 62 79 84 d5 a4 1d a8 d0 40 29 19
+
+	assert master_secret == exp_master_secret
+}
+
+//  {server}  derive write traffic keys for handshake data:
+fn test_keyderivation_server_handshake_write_key_and_iv() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// messages is [ClientHello, ServerHello]
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	hctx, _ := ks.hsx.take_hello_context()!
+	// messages := hctx.pack_hello_context(crypto.Hash.sha256)!
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+
+	srv_hsk_traffsecret := ks.server_handshake_traffic_secret(hsk_secret, hctx)!
+
+	server_hs_ts := [u8(0xb6), 0x7b, 0x7d, 0x69, 0x0c, 0xc1, 0x6c, 0x4e, 0x75, 0xe5, 0x42, 0x13,
+		0xcb, 0x2d, 0x37, 0xb4, 0xe9, 0xc9, 0x12, 0xbc, 0xde, 0xd9, 0x10, 0x5d, 0x42, 0xbe, 0xfd,
+		0x59, 0xd3, 0x91, 0xad, 0x38]
+	assert srv_hsk_traffsecret == server_hs_ts
+
+	// key info (13 octets):  00 10 09 74 6c 73 31 33 20 6b 65 79 00
+	keyinfo := [u8(0x00), 0x10, 0x09, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x6b, 0x65, 0x79, 0x00]
+	khk_label := HkdfLabel.decode(keyinfo)!
+
+	info := khk_label.encode()!
+	assert keyinfo == info
+	key_length := khk_label.length
+	write_key := ks.server_handshake_write_key(srv_hsk_traffsecret, key_length)!
+
+	expected_write_key := [u8(0x3f), 0xce, 0x51, 0x60, 0x09, 0xc2, 0x17, 0x27, 0xd0, 0xf2, 0xe4,
+		0xe8, 0x6e, 0xe4, 0x03, 0xbc]
+	assert write_key == expected_write_key
+
+	ivinfo := [u8(0x00), 0x0c, 0x08, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x69, 0x76, 0x00]
+	ihk_label := HkdfLabel.decode(ivinfo)!
+	ivlength := ihk_label.length
+	assert ivlength == 12
+	write_iv := ks.server_handshake_write_iv(srv_hsk_traffsecret, ivlength)!
+	expected_write_iv := [u8(0x5d), 0x31, 0x3e, 0xb2, 0x67, 0x12, 0x76, 0xee, 0x13, 0x00, 0x0b,
+		0x30]
+	assert write_iv == expected_write_iv
+}
+
+//  {server}  calculate finished "tls13 finished":
+fn test_keyderivation_server_calculate_finished_key_and_verify_data_of_finished() ! {
+	// for server, BaseKey is server_handshake_traffic_secret
+	base_key := [u8(0xb6), 0x7b, 0x7d, 0x69, 0x0c, 0xc1, 0x6c, 0x4e, 0x75, 0xe5, 0x42, 0x13, 0xcb,
+		0x2d, 0x37, 0xb4, 0xe9, 0xc9, 0x12, 0xbc, 0xde, 0xd9, 0x10, 0x5d, 0x42, 0xbe, 0xfd, 0x59,
+		0xd3, 0x91, 0xad, 0x38]
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	hctx, _ := ks.hsx.take_hello_context()!
+	// msg := hctx.pack_hello_context(crypto.Hash.sha256)!
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	srv_hsk_traffsecret := ks.server_handshake_traffic_secret(hsk_secret, hctx)!
+
+	assert srv_hsk_traffsecret == base_key
+
+	finkey := ks.finished_key(base_key)!
+	exp_finkey := [u8(0x00), 0x8d, 0x3b, 0x66, 0xf8, 0x16, 0xea, 0x55, 0x9f, 0x96, 0xb5, 0x37,
+		0xe8, 0x85, 0xc3, 0x1f, 0xc0, 0x68, 0xbf, 0x49, 0x2c, 0x65, 0x2f, 0x01, 0xf2, 0x88, 0xa1,
+		0xd8, 0xcd, 0xc1, 0x9f, 0xc8]
+	assert finkey == exp_finkey
+
+	srv_finkey := ks.server_finished_key(srv_hsk_traffsecret)!
+	assert srv_finkey == finkey
+
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	sc := Handshake.unpack(tls13.server_certificate_msg)!
+	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	n += ks.append_hskmsg_and_update_hash(ee)!
+	n += ks.append_hskmsg_and_update_hash(sc)!
+	n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	ctx := ks.hsx
+	hashed := ks.transcript_hash(ctx)!
+
+	assert n == ctx.packed_length()
+
+	// calculate verify_data
+	hmaced := ks.kdf.hmac(srv_finkey, hashed)!
+	assert hmaced.hex() == '9b9b141d906337fbd2cbdce71df4deda4ab42c309572cb7fffee5454b78f0718'
+
+	// FIXME: above was a fixed
+	// msgsctx
+	verify_data := ks.verify_data(srv_finkey, ctx)!
+	assert verify_data == hmaced
+}
+
+// derive secret "tls13 c ap traffic": ClientHello...server Finished
+fn test_keyderivation_server_client_appts0_and_exporter_master_sec() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	// messages << tls13.server_finished_msg
+	// mut messages := []u8{}
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	sc := Handshake.unpack(tls13.server_certificate_msg)!
+	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	n += ks.append_hskmsg_and_update_hash(ee)!
+	n += ks.append_hskmsg_and_update_hash(sc)!
+	n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// we add server_finished_msg here
+	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(sfin)!
+
+	hsx_ctx := ks.hsx
+	// messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	// assert n == messages.len
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	master_secret := ks.master_secret(hsk_secret)!
+	// client_application_traffic_secret_0(master_secret []u8, []Handshake) ![]u8 {
+	client_app_secret0 := ks.client_application_traffic_secret_0(master_secret, hsx_ctx)!
+	expected_clientappsec0 := [u8(0x9e), 0x40, 0x64, 0x6c, 0xe7, 0x9a, 0x7f, 0x9d, 0xc0, 0x5a,
+		0xf8, 0x88, 0x9b, 0xce, 0x65, 0x52, 0x87, 0x5a, 0xfa, 0x0b, 0x06, 0xdf, 0x00, 0x87, 0xf7,
+		0x92, 0xeb, 0xb7, 0xc1, 0x75, 0x04, 0xa5]
+
+	assert client_app_secret0 == expected_clientappsec0
+
+	srv_app_secret0 := ks.server_application_traffic_secret_0(master_secret, hsx_ctx)!
+	expected_srvappsec0 := [u8(0xa1), 0x1a, 0xf9, 0xf0, 0x55, 0x31, 0xf8, 0x56, 0xad, 0x47, 0x11,
+		0x6b, 0x45, 0xa9, 0x50, 0x32, 0x82, 0x04, 0xb4, 0xf4, 0x4b, 0xfb, 0x6b, 0x3a, 0x4b, 0x4f,
+		0x1f, 0x3f, 0xcb, 0x63, 0x16, 0x43]
+	assert srv_app_secret0 == expected_srvappsec0
+
+	exporter_mssec := ks.exporter_master_secret(master_secret, hsx_ctx)!
+	expected_exportermssec := [u8(0xfe), 0x22, 0xf8, 0x81, 0x17, 0x6e, 0xda, 0x18, 0xeb, 0x8f,
+		0x44, 0x52, 0x9e, 0x67, 0x92, 0xc5, 0x0c, 0x9a, 0x3f, 0x89, 0x45, 0x2f, 0x68, 0xd8, 0xae,
+		0x31, 0x1b, 0x43, 0x09, 0xd3, 0xcf, 0x50]
+	assert exporter_mssec == expected_exportermssec
+}
+
+//   {server}  derive write traffic keys for application data:
+//      PRK (32 octets):  a1 1a f9 f0 55 31 f8 56 ad 47 11 6b 45 a9 50 32
+//         82 04 b4 f4 4b fb 6b 3a 4b 4f 1f 3f cb 63 16 43
+//      key info (13 octets):  00 10 09 74 6c 73 31 33 20 6b 65 79 00
+//
+//      key expanded (16 octets):  9f 02 28 3b 6c 9c 07 ef c2 6b b9 f2 ac
+//         92 e3 56
+//      iv info (12 octets):  00 0c 08 74 6c 73 31 33 20 69 76 00
+//      iv expanded (12 octets):  cf 78 2b 88 dd 83 54 9a ad f1 e9 84
+
+fn test_keyderivation_derive_write_traffic_keys_and_iv_for_app_data() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	// messages << tls13.server_finished_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	sc := Handshake.unpack(tls13.server_certificate_msg)!
+	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	n += ks.append_hskmsg_and_update_hash(ee)!
+	n += ks.append_hskmsg_and_update_hash(sc)!
+	n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// we add server_finished_msg here
+	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(sfin)!
+
+	hsk_ctx := ks.hsx
+	// messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	// assert n == messages.len
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	master_secret := ks.master_secret(hsk_secret)!
+	srv_app_tsecret := ks.server_application_traffic_secret_0(master_secret, hsk_ctx)!
+
+	// key info (13 octets):  00 10 09 74 6c 73 31 33 20 6b 65 79 00
+	keyinfo := [u8(0x00), 0x10, 0x09, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x6b, 0x65, 0x79, 0x00]
+	khk_label := HkdfLabel.decode(keyinfo)!
+	// dump(khk_label)
+	info := khk_label.encode()!
+	assert keyinfo == info
+	key_length := khk_label.length
+
+	// server_application_write_key(srv_app_tsecret []u8, key_length int) ![]u8 {
+	server_application_key := ks.server_application_write_key(srv_app_tsecret, key_length)!
+	expected_srv_appkey := [u8(0x9f), 0x02, 0x28, 0x3b, 0x6c, 0x9c, 0x07, 0xef, 0xc2, 0x6b, 0xb9,
+		0xf2, 0xac, 0x92, 0xe3, 0x56]
+	assert server_application_key == expected_srv_appkey
+
+	// iv
+	//      iv info (12 octets):  00 0c 08 74 6c 73 31 33 20 69 76 00
+	//      iv expanded (12 octets):  cf 78 2b 88 dd 83 54 9a ad f1 e9 84
+	ivinfo := [u8(0x00), 0x0c, 0x08, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x69, 0x76, 0x00]
+	ihk_label := HkdfLabel.decode(ivinfo)!
+	ivlength := ihk_label.length
+
+	expected_srv_appiv := [u8(0xcf), 0x78, 0x2b, 0x88, 0xdd, 0x83, 0x54, 0x9a, 0xad, 0xf1, 0xe9,
+		0x84]
+
+	// erver_application_write_iv(srv_app_tsecret []u8, iv_length int) ![]u8 {
+	srv_appiv := ks.server_application_write_iv(srv_app_tsecret, ivlength)!
+	assert srv_appiv == expected_srv_appiv
+}
+
+//  {server} derive read traffic keys for handshake data IS SAME AS client derive write traffic keys for handshake data
+//      PRK (32 octets):  b3 ed db 12 6e 06 7f 35 a7 80 b3 ab f4 5e 2d 8f
+//         3b 1a 95 07 38 f5 2e 96 00 74 6a 0e 27 a5 5a 21
+//      key info (13 octets):  00 10 09 74 6c 73 31 33 20 6b 65 79 00
+//      key expanded (16 octets):  db fa a6 93 d1 76 2c 5b 66 6a f5 d9 50
+//         25 8d 01
+//      iv info (12 octets):  00 0c 08 74 6c 73 31 33 20 69 76 00
+//      iv expanded (12 octets):  5b d3 c7 1b 83 6e 0b 76 bb 73 26 5f
+fn test_keyderivation_derive_server_readtraffickeys_for_handshakedata() ! {
+	// read traffic keys for handshake data IS SAME AS client derive write traffic keys for handshake data
+	// for this, messages only included ClientHello to ServerHello
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+	// only two mesage
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	// messages << tls13.server_finished_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	// ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	// sc := Handshake.unpack(tls13.server_certificate_msg)!
+	// scv := Handshake.unpack(tls13.server_certverify_msg)!
+	// n += ks.append_hskmsg_and_update_hash(ee)!
+	// n += ks.append_hskmsg_and_update_hash(sc)!
+	// n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// we add server_finished_msg here
+	// sfin := Handshake.unpack(tls13.server_finished_msg)!
+	// n += ks.append_hskmsg_and_update_hash(sfin)!
+
+	hsk_ctx := ks.hsx
+	// messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	// assert n == messages.len
+
+	// key info (13 octets):  00 10 09 74 6c 73 31 33 20 6b 65 79 00
+	keyinfo := [u8(0x00), 0x10, 0x09, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x6b, 0x65, 0x79, 0x00]
+	khk_label := HkdfLabel.decode(keyinfo)!
+	// dump(khk_label)
+	info := khk_label.encode()!
+	assert keyinfo == info
+	key_length := khk_label.length
+
+	// FIX: server read traffic keys for handshake data is SAME AS with client write traffic keys for handshake data
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	client_hsk_tsecret := ks.client_handshake_traffic_secret(hsk_secret, hsk_ctx)!
+
+	server_hsk_readkey := ks.client_handshake_write_key(client_hsk_tsecret, key_length)!
+
+	expected_server_hsk_readkey := [u8(0xdb), 0xfa, 0xa6, 0x93, 0xd1, 0x76, 0x2c, 0x5b, 0x66, 0x6a,
+		0xf5, 0xd9, 0x50, 0x25, 0x8d, 0x01]
+	assert server_hsk_readkey == expected_server_hsk_readkey
+
+	// iv
+	//      iv info (12 octets):  00 0c 08 74 6c 73 31 33 20 69 76 00
+	//      iv expanded (12 octets):  5b d3 c7 1b 83 6e 0b 76 bb 73 26 5f
+	ivinfo := [u8(0x00), 0x0c, 0x08, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x69, 0x76, 0x00]
+	ihk_label := HkdfLabel.decode(ivinfo)!
+	ivlength := ihk_label.length
+
+	expected_srv_hsk_readv := [u8(0x5b), 0xd3, 0xc7, 0x1b, 0x83, 0x6e, 0x0b, 0x76, 0xbb, 0x73,
+		0x26, 0x5f]
+
+	srv_hsk_readiv := ks.client_handshake_write_iv(client_hsk_tsecret, ivlength)!
+	assert srv_hsk_readiv == expected_srv_hsk_readv
+}
+
+// {client}  extract secret "early" (same as server early secret)
+// see test_keyschedule_early_secret() above
+// fn test_kd_client_extract_early_secret() ! {}
+
+// {client}  derive secret for handshake "tls13 derived":
+fn test_kd_client_derive_hsksecret_for_tls13_derived() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+	expected_expanded := [u8(0x6f), 0x26, 0x15, 0xa1, 0x08, 0xc7, 0x02, 0xc5, 0x67, 0x8f, 0x54,
+		0xfc, 0x9d, 0xba, 0xb6, 0x97, 0x16, 0xc0, 0x76, 0x18, 0x9c, 0x48, 0x25, 0x0c, 0xeb, 0xea,
+		0xc3, 0x57, 0x6c, 0x36, 0x11, 0xba]
+
+	early_secret := ks.early_secret(nullbytes)!
+	derived_sec := ks.derive_secret(early_secret, derived_label, empty_hsk_msgs)!
+	assert derived_sec == expected_expanded
+}
+
+//  {client}  calculate finished "tls13 finished":
+fn test_kd_client_calculate_tls13_finished() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+
+	hello_ctx, _ := ks.hsx.take_hello_context()!
+	hello_msg := ks.hsx.pack_handshakes_msg(ks.hash)!
+	assert n == hello_msg.len
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+
+	client_hsts := ks.client_handshake_traffic_secret(hsk_secret, hello_ctx)!
+
+	expected_client_hsk_ts := hex.decode('b3eddb126e067f35a780b3abf45e2d8f3b1a950738f52e9600746a0e27a55a21')!
+	assert client_hsts == expected_client_hsk_ts
+
+	client_finkey := ks.finished_key(client_hsts)!
+	expected_client_finkey := hex.decode('b80ad01015fb2f0bd65ff7d4da5d6bf83f84821d1f87fdc7d3c75b5a7b42d9c4')!
+	assert client_finkey == expected_client_finkey
+
+	cln_hsk_tsecret := ks.client_handshake_traffic_secret(hsk_secret, hello_ctx)!
+	// client_finished_key(cln_hsk_tsecret []u8) ![]u8 {
+	client_hsk_finkey := ks.client_finished_key(cln_hsk_tsecret)!
+	assert client_hsk_finkey == client_finkey
+
+	// adding more messages
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	// for client to calculates finished message, should include server finished msg
+	// messages << tls13.server_finished_msg
+
+	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	sc := Handshake.unpack(tls13.server_certificate_msg)!
+	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	n += ks.append_hskmsg_and_update_hash(ee)!
+	n += ks.append_hskmsg_and_update_hash(sc)!
+	n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// we add server_finished_msg here
+	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(sfin)!
+
+	hsk_ctx := ks.hsx
+	messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	assert n == messages.len
+
+	hashed := ks.transcript_hash(hsk_ctx)!
+
+	// manually calculate verify_data
+	client_hmac_data := ks.kdf.hmac(client_finkey, hashed)!
+	assert client_hmac_data.hex() == 'a8ec436d677634ae525ac1fcebe11a039ec17694fac6e98527b642f2edd5ce61'
+
+	// calc verify_data
+	expected_client_verifydata := hex.decode('a8ec436d677634ae525ac1fcebe11a039ec17694fac6e98527b642f2edd5ce61')!
+	client_verify_data := ks.verify_data(client_finkey, hsk_ctx)!
+	assert client_verify_data == expected_client_verifydata
+}
+
+// {client}  derive write traffic keys for application data:
+fn test_kd_client_application_write_key_and_iv() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	// messages << tls13.server_finished_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	sc := Handshake.unpack(tls13.server_certificate_msg)!
+	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	n += ks.append_hskmsg_and_update_hash(ee)!
+	n += ks.append_hskmsg_and_update_hash(sc)!
+	n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// we add server_finished_msg here
+	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(sfin)!
+
+	hello_ctx := ks.hsx
+	messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	assert n == messages.len
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	master_secret := ks.master_secret(hsk_secret)!
+
+	// client_application_traffic_secret_0(master_secret []u8, hello_ctx) ![]u8 {
+	secret := ks.client_application_traffic_secret_0(master_secret, hello_ctx)!
+	expected_secret := [u8(0x9e), 0x40, 0x64, 0x6c, 0xe7, 0x9a, 0x7f, 0x9d, 0xc0, 0x5a, 0xf8, 0x88,
+		0x9b, 0xce, 0x65, 0x52, 0x87, 0x5a, 0xfa, 0x0b, 0x06, 0xdf, 0x00, 0x87, 0xf7, 0x92, 0xeb,
+		0xb7, 0xc1, 0x75, 0x04, 0xa5]
+	assert secret == expected_secret
+
+	client_app_tsecret := ks.client_application_traffic_secret_0(master_secret, hello_ctx)!
+	// client_application_write_key(cln_app_tsecret []u8, key_length int) ![]u8 {
+	client_wkey := ks.client_application_write_key(client_app_tsecret, 16)!
+	expected_client_wkey := [u8(0x17), 0x42, 0x2d, 0xda, 0x59, 0x6e, 0xd5, 0xd9, 0xac, 0xd8, 0x90,
+		0xe3, 0xc6, 0x3f, 0x50, 0x51]
+	assert client_wkey == expected_client_wkey
+
+	// iv info (12 octets):  00 0c 08 74 6c 73 31 33 20 69 76 00
+	// iv expanded (12 octets):  5b 78 92 3d ee 08 57 90 33 e5 23 d9
+	client_wiv := ks.client_application_write_iv(client_app_tsecret, 12)!
+	expected_client_wiv := [u8(0x5b), 0x78, 0x92, 0x3d, 0xee, 0x08, 0x57, 0x90, 0x33, 0xe5, 0x23,
+		0xd9]
+	assert client_wiv == expected_client_wiv
+}
+
+// {client}  derive secret "tls13 res master":
+fn test_kd_client_derive_secret_tls13_resumption_master_secret() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	// messages << tls13.server_finished_msg
+	// its should go up until client_finished_msg
+	// messages << tls13.client_finished_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	sc := Handshake.unpack(tls13.server_certificate_msg)!
+	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	n += ks.append_hskmsg_and_update_hash(ee)!
+	n += ks.append_hskmsg_and_update_hash(sc)!
+	n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// we add server_finished_msg here
+	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(sfin)!
+
+	// add upto client_finished_msg
+	clfin := Handshake.unpack(tls13.client_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(clfin)!
+
+	hello_ctx := ks.hsx
+	messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	assert n == messages.len
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	master_secret := ks.master_secret(hsk_secret)!
+
+	// PRK (32 octets):  18 df 06 84 3d 13 a0 8b f2 a4 49 84 4c 5f 8a 47
+	//    80 01 bc 4d 4c 62 79 84 d5 a4 1d a8 d0 40 29 19
+	expected_secret := [u8(0x18), 0xdf, 0x06, 0x84, 0x3d, 0x13, 0xa0, 0x8b, 0xf2, 0xa4, 0x49, 0x84,
+		0x4c, 0x5f, 0x8a, 0x47, 0x80, 0x01, 0xbc, 0x4d, 0x4c, 0x62, 0x79, 0x84, 0xd5, 0xa4, 0x1d,
+		0xa8, 0xd0, 0x40, 0x29, 0x19]
+
+	assert master_secret == expected_secret
+
+	// expanded (32 octets):  7d f2 35 f2 03 1d 2a 05 12 87 d0 2b 02 41
+	//     b0 bf da f8 6c c8 56 23 1f 2d 5a ba 46 c4 34 ec 19 6c
+	// resumption_master_secret(master_secret []u8, hello_ctx) ![]u8 {
+	resumption_secret := ks.resumption_master_secret(master_secret, hello_ctx)!
+	expected_resmaster_secret := [u8(0x7d), 0xf2, 0x35, 0xf2, 0x03, 0x1d, 0x2a, 0x05, 0x12, 0x87,
+		0xd0, 0x2b, 0x02, 0x41, 0xb0, 0xbf, 0xda, 0xf8, 0x6c, 0xc8, 0x56, 0x23, 0x1f, 0x2d, 0x5a,
+		0xba, 0x46, 0xc4, 0x34, 0xec, 0x19, 0x6c]
+	assert resumption_secret == expected_resmaster_secret
+}
+
+//  {server}  generate resumption secret "tls13 resumption":
+fn test_server_generate_resumption_secret() ! {
+	mut ks := new_key_scheduler(crypto.Hash.sha256)!
+
+	// mut messages := []u8{}
+	// messages << tls13.clienthello_msg
+	// messages << tls13.serverhello_msg
+	// messages << tls13.encrypted_extension_msg
+	// messages << tls13.server_certificate_msg
+	// messages << tls13.server_certverify_msg
+	// messages << tls13.server_finished_msg
+	// its should go up until client_finished_msg
+	// messages << tls13.client_finished_msg
+
+	mut n := 0
+	ch := Handshake.unpack(tls13.clienthello_msg)!
+	sh := Handshake.unpack(tls13.serverhello_msg)!
+	n += ks.append_hskmsg_and_update_hash(ch)!
+	n += ks.append_hskmsg_and_update_hash(sh)!
+	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
+	sc := Handshake.unpack(tls13.server_certificate_msg)!
+	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	n += ks.append_hskmsg_and_update_hash(ee)!
+	n += ks.append_hskmsg_and_update_hash(sc)!
+	n += ks.append_hskmsg_and_update_hash(scv)!
+
+	// we add server_finished_msg here
+	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(sfin)!
+
+	// add upto client_finished_msg
+	clfin := Handshake.unpack(tls13.client_finished_msg)!
+	n += ks.append_hskmsg_and_update_hash(clfin)!
+
+	hello_ctx := ks.hsx
+	messages := ks.hsx.pack_handshakes_msg(ks.hash)!
+	assert n == messages.len
+
+	early_secret := ks.early_secret(nullbytes)!
+	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	master_secret := ks.master_secret(hsk_secret)!
+
+	// prk
+	prk := [u8(0x7d), 0xf2, 0x35, 0xf2, 0x03, 0x1d, 0x2a, 0x05, 0x12, 0x87, 0xd0, 0x2b, 0x02, 0x41,
+		0xb0, 0xbf, 0xda, 0xf8, 0x6c, 0xc8, 0x56, 0x23, 0x1f, 0x2d, 0x5a, 0xba, 0x46, 0xc4, 0x34,
+		0xec, 0x19, 0x6c]
+	// ks.resumption_master_secret(master_secret, hello_ctx)!
+	resump_msec := ks.resumption_master_secret(master_secret, hello_ctx)!
+	assert prk == resump_msec
+	// info (22 octets):  00 20 10 74 6c 73 31 33 20 72 65 73 75 6d 70 74
+	//     69 6f 6e 02 00 00
+	info := [u8(0x00), 0x20, 0x10, 0x74, 0x6c, 0x73, 0x31, 0x33, 0x20, 0x72, 0x65, 0x73, 0x75,
+		0x6d, 0x70, 0x74, 0x69, 0x6f, 0x6e, 0x02, 0x00, 0x00]
+	hkinfo := HkdfLabel.decode(info)!
+	// dump(hkinfo)
+	expected_resumption := [u8(0x4e), 0xcd, 0x0e, 0xb6, 0xec, 0x3b, 0x4d, 0x87, 0xf5, 0xd6, 0x02,
+		0x8f, 0x92, 0x2c, 0xa4, 0xc5, 0x85, 0x1a, 0x27, 0x7f, 0xd4, 0x13, 0x11, 0xc9, 0xe6, 0x2d,
+		0x2c, 0x94, 0x92, 0xe1, 0xc4, 0xf3]
+
+	// generate_tls13_resumption(resump_msec []u8, ticket_nonce []u8, length int) ![]u8 {
+	res_secret := ks.generate_tls13_resumption(resump_msec, hkinfo.context, 32)!
+	assert res_secret == expected_resumption
+}
