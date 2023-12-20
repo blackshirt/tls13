@@ -90,7 +90,7 @@ $openssl s_client -connect localhost:8443
 
 ### Run test main.v
 ```bash
-$v run main.v 
+$v run examples/main.v 
 ```
 
 Here's some output from client 
