@@ -50,9 +50,8 @@ Its only supports limited subset of TLS 1.3 standard (maybe get updated in time)
 ├── servername.v               -> server_name extension support
 ├── servername_test.v
 ├── session.v                  -> Core TLS 1.3 client capable performing handshake and related task, write record to the wire, read record from wire.
-├── session_handshake.v       -> Core how the session performing TLS 1.3 handshake process
+├── session_handshake.v        -> Core how the session performing TLS 1.3 handshake process
 ├── session_io.v               -> handling IO related thing from session context
-├── session.v                  -> Main session files
 ├── signaturescheme.v          -> signature_scheme extension support
 ├── signaturescheme_test.v
 ├── state.v                    -> Session state handling
