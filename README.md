@@ -1,22 +1,21 @@
 # tls13
-Limited subset of TLS Protocol Version 1.3 from [RFC 8446](https://datatracker.ietf.org/doc/html/rfc8446) in pure V language for learning purposes.
+Limited subset of Transport Layer Security (TLS) Protocol Version 1.3 from [RFC 8446](https://datatracker.ietf.org/doc/html/rfc8446) in pure V language for learning purposes.
 
 ## Status
 > [!Warning]
 >
 > Implementing TLS 1.3 is a hard and full of cullprits that you should aware.
-> Its does not finished yet and no recommended for production use,
+> Its does not finished yet and not recommended for production use,
 > Its intended only for learning purposes.
 > 
 > Basic of messages parsing, handshake processing, decryption/encryption record, key scheduling almost has been implemented.
-> With strict and limited configuration of `openssl s_server` command for local testing below,
-> It can perform full TLS 1.3 handshake phase and send application data
+> Tested with strict and limited configuration of `openssl s_server` and correctly configured `wolfssl` server, it successfuy can perform full TLS 1.3 handshake phase and send application data layer.
 
 > [!Note]
 > This module depends on some of v modules availables at this github repository.
 > Install its before to run some test.
 
-Its only supports limited subset of TLS 1.3 standard (maybe get updated in time)
+Currently, its only supports limited subset of TLS 1.3 standard (maybe get updated in time)
 - Client only (server maybe in plan)
 - Strict limited to only 1.3 version of standard (no plan for support for older version)
 - Only support TLS_CHACHA20_POLY1305_SHA256 ciphersuite 
@@ -64,7 +63,7 @@ Its only supports limited subset of TLS 1.3 standard (maybe get updated in time)
 ```
 
 ## Testing
-Testing with local openssl server 
+Testing with local openssl server (and wolfssl server)
 
 ### Create self signed certificate for openssl 
 ```
@@ -77,7 +76,7 @@ openssl req -x509 -days 365 -in pubcert.csr -key privkey.pem -out pubcert.pem
 ```bash
 $openssl s_server -accept 8443 -tls1_3 -state -tlsextdebug -debug -msg -cert key/pubcert.pem -key key/privkey.pem
 ```
-or you can use cloned [`wolfssl`](https://github.com/wolfssl/wolfssl), configure the build with `--enable-tls13 --enable-curve25519 --enable-ed25519` and run example server from examples directory
+or you can use cloned [`wolfssl`](https://github.com/wolfssl/wolfssl), configures the build with `--enable-tls13 --enable-curve25519 --enable-ed25519` and run example server from examples directory
 ```
 ➜ ~/wolfssl (master) $ ./examples/server/server -d -b -g -verbose -p 8443 -v 4 -c ./certs/ed25519/server-ed25519-cert.pem -k ./certs/ed25519/server-ed25519-priv.pem
 ```
@@ -162,4 +161,5 @@ shutting down SSL
 CONNECTION CLOSED
 ```
 
+Happy times ...
 &copy;[blackshirt](https://github.com/blackshirt/tls13)
