@@ -1,7 +1,7 @@
 module tls13
 
 struct ClientSpV {
-	versions []ProtoVersion // ProtoVersion versions<2..254>;
+	versions []ProtocolVersion // ProtocolVersion versions<2..254>;
 }
 
 fn (csv ClientSpV) pack() ![]u8 {
@@ -25,7 +25,7 @@ fn ClientSpV.unpack(b []u8) !ClientSpV {
 }
 
 struct ServerHRetrySpV {
-	version ProtoVersion
+	version ProtocolVersion
 }
 
 fn (shv ServerHRetrySpV) pack() ![]u8 {
@@ -34,7 +34,7 @@ fn (shv ServerHRetrySpV) pack() ![]u8 {
 }
 
 fn ServerHRetrySpV.unpack(b []u8) !ServerHRetrySpV {
-	ver := ProtoVersion.unpack(b)!
+	ver := ProtocolVersion.unpack(b)!
 	shv := ServerHRetrySpV{
 		version: ver
 	}
@@ -61,7 +61,7 @@ fn (sv SupportedVersions) pack() ![]u8 {
 fn SupportedVersions.unpack(b []u8, hsk HandshakeType) !SupportedVersions {
 	match hsk {
 		.client_hello {
-			// for clienthello, its minimal contains one of ProtoVersion
+			// for clienthello, its minimal contains one of ProtocolVersion
 			if b.len < 3 {
 				return error('bad SupportedVersions bytes')
 			}
@@ -86,9 +86,9 @@ fn SupportedVersions.unpack(b []u8, hsk HandshakeType) !SupportedVersions {
 fn (sve SupportedVersions) pack_to_extension() !Extension {
 	payload := sve.pack()!
 	ext := Extension{
-		tipe: .supported_versions
+		tipe:   .supported_versions
 		length: payload.len
-		data: payload
+		data:   payload
 	}
 	return ext
 }

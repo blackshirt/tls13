@@ -1,78 +1,71 @@
 module tls13
 
-import math
 import arrays
 import encoding.binary
 import blackshirt.buffer
 
-type ProtoVersion = u16
+// uint16 ProtocolVersion;
+type ProtocolVersion = u16
 
 const u16size = 2
 
-const tls_v13 = ProtoVersion(0x0304)
+// vfmt off
+const tls_v13 = ProtocolVersion(0x0304)
+const tls_v12 = ProtocolVersion(0x0303)
+const tls_v11 = ProtocolVersion(0x0302)
+const tls_v10 = ProtocolVersion(0x0301)
+// vfmt on
 
-const tls_v12 = ProtoVersion(0x0303)
-
-const tls_v11 = ProtoVersion(0x0302)
-
-const tls_v10 = ProtoVersion(0x0301)
-
-fn (v ProtoVersion) pack() ![]u8 {
-	if int(v) > int(math.max_u16) {
-		return error('ProtoVersion exceed limit')
+// pack serializes ProtocolVersion into bytes array.
+fn (v ProtocolVersion) pack() ![]u8 {
+	if v > max_u16 {
+		return error('ProtocolVersion exceed limit')
 	}
-	mut out := []u8{len: tls13.u16size}
+	mut out := []u8{len: u16size}
 	binary.big_endian_put_u16(mut out, v)
 	return out
 }
 
-fn (v ProtoVersion) packed_length() int {
-	return tls13.u16size
+fn (v ProtocolVersion) packed_length() int {
+	return u16size
 }
 
-// unpack deserializes bytes arrays to ProtoVersion
-fn ProtoVersion.unpack(b []u8) !ProtoVersion {
-	if b.len != 2 {
-		return error('Bad ProtoVersion buffer len')
+// unpack deserializes bytes array into ProtocolVersion
+fn ProtocolVersion.unpack(b []u8) !ProtocolVersion {
+	if b.len != u16size {
+		return error('Bad ProtocolVersion buffer len')
 	}
-
 	v := binary.big_endian_u16(b)
-	return ProtoVersion(v)
+	return ProtocolVersion.from_u16(v)!
 }
 
-fn ProtoVersion.from(val int) !ProtoVersion {
-	if val > int(math.max_u16) {
-		return error('Value exceed for ProtoVersion')
+fn ProtocolVersion.from_u16(val u16) !ProtocolVersion {
+	if val <= u16(0) || val > max_u16 {
+		return error('Bad values for ProtocolVersion')
 	}
 	match val {
-		0x0301 {
-			return tls13.tls_v10
-		}
-		0x0302 {
-			return tls13.tls_v11
-		}
-		0x0303 {
-			return tls13.tls_v12
-		}
-		0x0304 {
-			return tls13.tls_v13
-		}
+		// vfmt off
+		u16(0x0301) { return tls_v10 }
+		u16(0x0302) { return tls_v11 }
+		u16(0x0303) { return tls_v12 }
+		u16(0x0304) { return tls_v13 }
 		else {
-			return error('bad value')
+			return error('unsupported ProtocolVersion value')
 		}
+		// vfmt on
 	}
 }
 
-fn (mut pvl []ProtoVersion) append(v ProtoVersion) {
+fn (mut pvl []ProtocolVersion) append(v ProtocolVersion) {
 	if v in pvl {
 		return
 	}
 	pvl << v
 }
 
-fn (pvl []ProtoVersion) pack() ![]u8 {
+fn (pvl []ProtocolVersion) pack() ![]u8 {
 	length := pvl.len * 2
-	if length > math.max_u8 {
+	if length > max_u8 {
 		return error('bad length')
 	}
 	mut out := []u8{}
@@ -86,7 +79,7 @@ fn (pvl []ProtoVersion) pack() ![]u8 {
 	return out
 }
 
-fn (pvl []ProtoVersion) packed_length() int {
+fn (pvl []ProtocolVersion) packed_length() int {
 	mut n := 0
 	n += 1
 	n += pvl.len * 2
@@ -94,7 +87,7 @@ fn (pvl []ProtoVersion) packed_length() int {
 	return n
 }
 
-type ProtocolVersionList = []ProtoVersion
+type ProtocolVersionList = []ProtocolVersion
 
 fn ProtocolVersionList.unpack(b []u8) !ProtocolVersionList {
 	if b.len < 1 {
@@ -108,9 +101,9 @@ fn ProtocolVersionList.unpack(b []u8) !ProtocolVersionList {
 		return error('ProtocolVersionList length tidak genap')
 	}
 	mut i := 0
-	mut pv := []ProtoVersion{}
+	mut pv := []ProtocolVersion{}
 	for i < length {
-		v := ProtoVersion.unpack(vers[i..i + 2])!
+		v := ProtocolVersion.unpack(vers[i..i + 2])!
 		pv.append(v)
 		i += v.packed_length()
 	}
@@ -120,9 +113,10 @@ fn ProtocolVersionList.unpack(b []u8) !ProtocolVersionList {
 }
 
 // Utility function
-// sort does sorting of ProtoVersion arrays in descending order, from biggest to the lowest version.
-fn (mut vls []ProtoVersion) sort() []ProtoVersion {
-	vls.sort_with_compare(fn (v1 &ProtoVersion, v2 &ProtoVersion) int {
+//
+// sort does sorting of ProtocolVersion arrays in descending order, from biggest to the lowest version.
+fn (mut vls []ProtocolVersion) sort() []ProtocolVersion {
+	vls.sort_with_compare(fn (v1 &ProtocolVersion, v2 &ProtocolVersion) int {
 		if v1 < v2 {
 			return 1
 		}
@@ -134,12 +128,12 @@ fn (mut vls []ProtoVersion) sort() []ProtoVersion {
 	return vls
 }
 
-fn choose_supported_version(vls []ProtoVersion) !ProtoVersion {
+fn choose_supported_version(vls []ProtocolVersion) !ProtocolVersion {
 	// choose the max version available in list
 	// RFC mandates its in sorted form.
 	max_ver := arrays.max(vls)!
 	// we currently only support v1.3
-	if max_ver != tls13.tls_v13 {
+	if max_ver != tls_v13 {
 		return error('nothing version in list was supported')
 	}
 	return max_ver

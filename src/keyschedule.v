@@ -4,39 +4,23 @@ import crypto
 import blackshirt.hkdf
 
 const empty_hsk_msgs = []Handshake{len: 0}
-
 const nullbytes = []u8{len: 0, cap: 0}
 
 const extern_binder_label = 'ext binder'
-
 const resump_binder_label = 'res binder'
-
 const client_early_label = 'c e traffic'
-
 const early_exporter_label = 'e exp master'
-
 const derived_label = 'derived'
-
 const client_hsksecret_label = 'c hs traffic'
-
 const server_hsksecret_label = 's hs traffic'
-
 const client_appsecret_label = 'c ap traffic'
-
 const server_appsecret_label = 's ap traffic'
-
 const exporter_mastersec_label = 'exp master'
-
 const resump_mastersec_label = 'res master'
-
 const write_key_label = 'key'
-
 const write_iv_label = 'iv'
-
 const traffic_upd_label = 'traffic upd'
-
 const finished_key_label = 'finished'
-
 const resumption_label = 'resumption'
 
 // RFC 8446 7.1.  Key Schedule
@@ -89,8 +73,8 @@ mut:
 fn new_key_scheduler(h crypto.Hash) !&KeyScheduler {
 	kd := &KeyScheduler{
 		hash: h
-		kdf: hkdf.new(h)
-		tc: new_transcripter(h)!
+		kdf:  hkdf.new(h)
+		tc:   new_transcripter(h)!
 	}
 	return kd
 }
@@ -227,7 +211,7 @@ fn (mut ks KeyScheduler) transcript_hash(messages []Handshake) ![]u8 {
 	n := tc.write(msgs)!
 	assert n == msgs.len
 	// todo: use .sum() instead
-	out := tc.sum(tls13.nullbytes)
+	out := tc.sum(nullbytes)
 	return out
 }
 
@@ -249,7 +233,7 @@ fn (mut ks KeyScheduler) transcript_hash(messages []Handshake) ![]u8 {
 //
 fn (mut ks KeyScheduler) early_secret(psk_bytes []u8) ![]u8 {
 	if ks.early_secret.len == 0 {
-		ks.early_secret = ks.kdf.extract(tls13.nullbytes, psk_bytes)!
+		ks.early_secret = ks.kdf.extract(nullbytes, psk_bytes)!
 	}
 	return ks.early_secret
 }
@@ -257,7 +241,7 @@ fn (mut ks KeyScheduler) early_secret(psk_bytes []u8) ![]u8 {
 fn (mut ks KeyScheduler) ext_binder_key(early_secret []u8) ![]u8 {
 	if ks.extern_binderkey.len == 0 {
 		ks.extern_binderkey
-		ks.derive_secret(early_secret, tls13.extern_binder_label, tls13.empty_hsk_msgs)!
+		ks.derive_secret(early_secret, extern_binder_label, empty_hsk_msgs)!
 	}
 
 	return ks.extern_binderkey
@@ -265,8 +249,7 @@ fn (mut ks KeyScheduler) ext_binder_key(early_secret []u8) ![]u8 {
 
 fn (mut ks KeyScheduler) resump_binder_key(early_secret []u8) ![]u8 {
 	if ks.resump_binderkey.len == 0 {
-		ks.resump_binderkey = ks.derive_secret(early_secret, tls13.resump_binder_label,
-			tls13.empty_hsk_msgs)!
+		ks.resump_binderkey = ks.derive_secret(early_secret, resump_binder_label, empty_hsk_msgs)!
 	}
 	return ks.resump_binderkey
 }
@@ -275,8 +258,9 @@ fn (mut ks KeyScheduler) resump_binder_key(early_secret []u8) ![]u8 {
 fn (mut ks KeyScheduler) client_early_traffic_secret(early_secret []u8, ch ClientHello) ![]u8 {
 	hsk := HandshakePayload(ch).pack_to_handshake()!
 	if ks.cln_early_tsecret.len == 0 {
-		ks.cln_early_tsecret = ks.derive_secret(early_secret, tls13.client_early_label,
-			[hsk])!
+		ks.cln_early_tsecret = ks.derive_secret(early_secret, client_early_label, [
+			hsk,
+		])!
 	}
 	return ks.cln_early_tsecret
 }
@@ -284,7 +268,7 @@ fn (mut ks KeyScheduler) client_early_traffic_secret(early_secret []u8, ch Clien
 // +-----> Derive-Secret(., "e exp master", ClientHello) = early_exporter_master_secret
 fn (mut ks KeyScheduler) early_exporter_master_secret(early_secret []u8, ch ClientHello) ![]u8 {
 	hsk := HandshakePayload(ch).pack_to_handshake()!
-	early_exporter_ms := ks.derive_secret(early_secret, tls13.early_exporter_label, [
+	early_exporter_ms := ks.derive_secret(early_secret, early_exporter_label, [
 		hsk,
 	])!
 	return early_exporter_ms
@@ -310,7 +294,7 @@ fn (mut ks KeyScheduler) early_exporter_master_secret(early_secret []u8, ch Clie
 //       Derive-Secret(., "derived", "")
 fn (mut ks KeyScheduler) handshake_secret(early_secret []u8, ecdhe_bytes []u8) ![]u8 {
 	if ks.hsk_secret.len == 0 {
-		derived_sec := ks.derive_secret(early_secret, tls13.derived_label, tls13.empty_hsk_msgs)!
+		derived_sec := ks.derive_secret(early_secret, derived_label, empty_hsk_msgs)!
 		ks.hsk_secret = ks.kdf.extract(derived_sec, ecdhe_bytes)!
 	}
 	return ks.hsk_secret
@@ -320,8 +304,7 @@ fn (mut ks KeyScheduler) handshake_secret(early_secret []u8, ecdhe_bytes []u8) !
 fn (mut ks KeyScheduler) client_handshake_traffic_secret(hsk_secret []u8, hello_ctx HelloContext) ![]u8 {
 	// TODO: validate HskContext, add support for HRR
 	if ks.cln_hsk_tsecret.len == 0 {
-		ks.cln_hsk_tsecret = ks.derive_secret(hsk_secret, tls13.client_hsksecret_label,
-			hello_ctx)!
+		ks.cln_hsk_tsecret = ks.derive_secret(hsk_secret, client_hsksecret_label, hello_ctx)!
 	}
 	return ks.cln_hsk_tsecret
 }
@@ -329,8 +312,7 @@ fn (mut ks KeyScheduler) client_handshake_traffic_secret(hsk_secret []u8, hello_
 // +-----> Derive-Secret(., "s hs traffic", ClientHello...ServerHello) = server_handshake_traffic_secret
 fn (mut ks KeyScheduler) server_handshake_traffic_secret(hsk_secret []u8, hello_ctx HelloContext) ![]u8 {
 	if ks.srv_hsk_tsecret.len == 0 {
-		ks.srv_hsk_tsecret = ks.derive_secret(hsk_secret, tls13.server_hsksecret_label,
-			hello_ctx)!
+		ks.srv_hsk_tsecret = ks.derive_secret(hsk_secret, server_hsksecret_label, hello_ctx)!
 	}
 	return ks.srv_hsk_tsecret
 }
@@ -359,8 +341,8 @@ fn (mut ks KeyScheduler) server_handshake_traffic_secret(hsk_secret []u8, hello_
 //
 fn (mut ks KeyScheduler) master_secret(hsk_secret []u8) ![]u8 {
 	if ks.master_secret.len == 0 {
-		drv_secret := ks.derive_secret(hsk_secret, tls13.derived_label, tls13.empty_hsk_msgs)!
-		ks.master_secret = ks.kdf.extract(drv_secret, tls13.nullbytes)!
+		drv_secret := ks.derive_secret(hsk_secret, derived_label, empty_hsk_msgs)!
+		ks.master_secret = ks.kdf.extract(drv_secret, nullbytes)!
 	}
 	return ks.master_secret
 }
@@ -368,8 +350,7 @@ fn (mut ks KeyScheduler) master_secret(hsk_secret []u8) ![]u8 {
 // +-----> Derive-Secret(., "s ap traffic", ClientHello...server Finished) = server_application_traffic_secret_0
 fn (mut ks KeyScheduler) server_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake) ![]u8 {
 	if ks.srv_app_tsecret.len == 0 {
-		ks.srv_app_tsecret = ks.derive_secret(master_secret, tls13.server_appsecret_label,
-			hsk_ctx)!
+		ks.srv_app_tsecret = ks.derive_secret(master_secret, server_appsecret_label, hsk_ctx)!
 	}
 	return ks.srv_app_tsecret
 }
@@ -377,8 +358,7 @@ fn (mut ks KeyScheduler) server_application_traffic_secret_0(master_secret []u8,
 // +-----> Derive-Secret(., "c ap traffic",  ClientHello...server Finished) = client_application_traffic_secret_0
 fn (mut ks KeyScheduler) client_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake) ![]u8 {
 	if ks.cln_app_tsecret.len == 0 {
-		ks.cln_app_tsecret = ks.derive_secret(master_secret, tls13.client_appsecret_label,
-			hsk_ctx)!
+		ks.cln_app_tsecret = ks.derive_secret(master_secret, client_appsecret_label, hsk_ctx)!
 	}
 	return ks.cln_app_tsecret
 }
@@ -386,7 +366,7 @@ fn (mut ks KeyScheduler) client_application_traffic_secret_0(master_secret []u8,
 // +-----> Derive-Secret(., "exp master", ClientHello...server Finished) = exporter_master_secret
 fn (mut ks KeyScheduler) exporter_master_secret(master_secret []u8, hsk_ctx []Handshake) ![]u8 {
 	if ks.exp_master_sec.len == 0 {
-		ks.exp_master_sec = ks.derive_secret(master_secret, tls13.exporter_mastersec_label,
+		ks.exp_master_sec = ks.derive_secret(master_secret, exporter_mastersec_label,
 			hsk_ctx)!
 	}
 	return ks.exp_master_sec
@@ -395,7 +375,7 @@ fn (mut ks KeyScheduler) exporter_master_secret(master_secret []u8, hsk_ctx []Ha
 // +-----> Derive-Secret(., "res master", ClientHello...client Finished) = resumption_master_secret
 fn (mut ks KeyScheduler) resumption_master_secret(master_secret []u8, hsk_ctx []Handshake) ![]u8 {
 	if ks.resump_master_sec.len == 0 {
-		ks.resump_master_sec = ks.derive_secret(master_secret, tls13.resump_mastersec_label,
+		ks.resump_master_sec = ks.derive_secret(master_secret, resump_mastersec_label,
 			hsk_ctx)!
 	}
 	return ks.resump_master_sec
@@ -407,8 +387,7 @@ fn (mut ks KeyScheduler) resumption_master_secret(master_secret []u8, hsk_ctx []
 //           HKDF-Expand-Label(application_traffic_secret_N,
 //                             "traffic upd", "", Hash.length)
 fn (mut ks KeyScheduler) next_traffic_secret(traffic_secret []u8) ![]u8 {
-	secret := ks.expand_label(traffic_secret, tls13.traffic_upd_label, tls13.nullbytes,
-		ks.kdf.size()!)!
+	secret := ks.expand_label(traffic_secret, traffic_upd_label, nullbytes, ks.kdf.size()!)!
 	return secret
 }
 
@@ -432,16 +411,16 @@ fn (mut ks KeyScheduler) next_traffic_secret(traffic_secret []u8) ![]u8 {
 //
 fn (mut ks KeyScheduler) client_early_write_key(cln_early_tsecret []u8, key_length int) ![]u8 {
 	if ks.cln_early_wrkey.len == 0 {
-		ks.cln_early_wrkey = ks.expand_label(cln_early_tsecret, tls13.write_key_label,
-			tls13.nullbytes, key_length)!
+		ks.cln_early_wrkey = ks.expand_label(cln_early_tsecret, write_key_label, nullbytes,
+			key_length)!
 	}
 	return ks.cln_early_wrkey
 }
 
 fn (mut ks KeyScheduler) client_early_write_iv(cln_early_tsecret []u8, iv_length int) ![]u8 {
 	if ks.cln_early_wriv.len == 0 {
-		ks.cln_early_wriv = ks.expand_label(cln_early_tsecret, tls13.write_key_label,
-			tls13.nullbytes, iv_length)!
+		ks.cln_early_wriv = ks.expand_label(cln_early_tsecret, write_key_label, nullbytes,
+			iv_length)!
 	}
 	return ks.cln_early_wriv
 }
@@ -450,15 +429,15 @@ fn (mut ks KeyScheduler) client_early_write_iv(cln_early_tsecret []u8, iv_length
 //
 fn (mut ks KeyScheduler) server_handshake_write_key(server_hsk_tsecret []u8, key_length int) ![]u8 {
 	if ks.srv_hsk_wrkey.len == 0 {
-		ks.srv_hsk_wrkey = ks.expand_label(server_hsk_tsecret, tls13.write_key_label,
-			tls13.nullbytes, key_length)!
+		ks.srv_hsk_wrkey = ks.expand_label(server_hsk_tsecret, write_key_label, nullbytes,
+			key_length)!
 	}
 	return ks.srv_hsk_wrkey
 }
 
 fn (mut ks KeyScheduler) server_handshake_write_iv(server_hsk_tsecret []u8, iv_length int) ![]u8 {
 	if ks.srv_hsk_wriv.len == 0 {
-		ks.srv_hsk_wriv = ks.expand_label(server_hsk_tsecret, tls13.write_iv_label, tls13.nullbytes,
+		ks.srv_hsk_wriv = ks.expand_label(server_hsk_tsecret, write_iv_label, nullbytes,
 			iv_length)!
 	}
 	return ks.srv_hsk_wriv
@@ -466,15 +445,15 @@ fn (mut ks KeyScheduler) server_handshake_write_iv(server_hsk_tsecret []u8, iv_l
 
 fn (mut ks KeyScheduler) client_handshake_write_key(client_hsk_tsecret []u8, key_length int) ![]u8 {
 	if ks.cln_hsk_wrkey.len == 0 {
-		ks.cln_hsk_wrkey = ks.expand_label(client_hsk_tsecret, tls13.write_key_label,
-			tls13.nullbytes, key_length)!
+		ks.cln_hsk_wrkey = ks.expand_label(client_hsk_tsecret, write_key_label, nullbytes,
+			key_length)!
 	}
 	return ks.cln_hsk_wrkey
 }
 
 fn (mut ks KeyScheduler) client_handshake_write_iv(client_hsk_tsecret []u8, length int) ![]u8 {
 	if ks.cln_hsk_wriv.len == 0 {
-		ks.cln_hsk_wriv = ks.expand_label(client_hsk_tsecret, tls13.write_iv_label, tls13.nullbytes,
+		ks.cln_hsk_wriv = ks.expand_label(client_hsk_tsecret, write_iv_label, nullbytes,
 			length)!
 	}
 	return ks.cln_hsk_wriv
@@ -484,7 +463,7 @@ fn (mut ks KeyScheduler) client_handshake_write_iv(client_hsk_tsecret []u8, leng
 // srv_app_tsecret := server_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake)!
 fn (mut ks KeyScheduler) server_application_write_key(srv_app_tsecret []u8, key_length int) ![]u8 {
 	if ks.srv_app_wrkey.len == 0 {
-		ks.srv_app_wrkey = ks.expand_label(srv_app_tsecret, tls13.write_key_label, tls13.nullbytes,
+		ks.srv_app_wrkey = ks.expand_label(srv_app_tsecret, write_key_label, nullbytes,
 			key_length)!
 	}
 	return ks.srv_app_wrkey
@@ -493,7 +472,7 @@ fn (mut ks KeyScheduler) server_application_write_key(srv_app_tsecret []u8, key_
 // server_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake)
 fn (mut ks KeyScheduler) server_application_write_iv(srv_app_tsecret []u8, iv_length int) ![]u8 {
 	if ks.srv_app_wriv.len == 0 {
-		ks.srv_app_wriv = ks.expand_label(srv_app_tsecret, tls13.write_iv_label, tls13.nullbytes,
+		ks.srv_app_wriv = ks.expand_label(srv_app_tsecret, write_iv_label, nullbytes,
 			iv_length)!
 	}
 
@@ -504,7 +483,7 @@ fn (mut ks KeyScheduler) server_application_write_iv(srv_app_tsecret []u8, iv_le
 // client_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake8)
 fn (mut ks KeyScheduler) client_application_write_key(cln_app_tsecret []u8, key_length int) ![]u8 {
 	if ks.cln_app_wrkey.len == 0 {
-		ks.cln_app_wrkey = ks.expand_label(cln_app_tsecret, tls13.write_key_label, tls13.nullbytes,
+		ks.cln_app_wrkey = ks.expand_label(cln_app_tsecret, write_key_label, nullbytes,
 			key_length)!
 	}
 	return ks.cln_app_wrkey
@@ -513,7 +492,7 @@ fn (mut ks KeyScheduler) client_application_write_key(cln_app_tsecret []u8, key_
 fn (mut ks KeyScheduler) client_application_write_iv(cln_app_tsecret []u8, iv_length int) ![]u8 {
 	// FIXME: client_application_traffic_secret_0 should client_application_traffic_secret_n?
 	if ks.cln_app_wriv.len == 0 {
-		ks.cln_app_wriv = ks.expand_label(cln_app_tsecret, tls13.write_iv_label, tls13.nullbytes,
+		ks.cln_app_wriv = ks.expand_label(cln_app_tsecret, write_iv_label, nullbytes,
 			iv_length)!
 	}
 	return ks.cln_app_wriv
@@ -523,21 +502,19 @@ fn (mut ks KeyScheduler) client_application_write_iv(cln_app_tsecret []u8, iv_le
 // https://datatracker.ietf.org/doc/html/rfc8446#section-4.4
 // finished_key = HKDF-Expand-Label(key: server_secret, label: "finished", ctx: "", len: 48)
 fn (mut ks KeyScheduler) finished_key(base_key []u8) ![]u8 {
-	finkey := ks.expand_label(base_key, tls13.finished_key_label, tls13.nullbytes, ks.kdf.size()!)!
+	finkey := ks.expand_label(base_key, finished_key_label, nullbytes, ks.kdf.size()!)!
 	return finkey
 }
 
 // server_handshake_traffic_secret(hsk_secret []u8, []Handshake)
 fn (mut ks KeyScheduler) server_finished_key(srv_hsk_tsecret []u8) ![]u8 {
-	server_finkey := ks.expand_label(srv_hsk_tsecret, tls13.finished_key_label, tls13.nullbytes,
-		ks.kdf.size()!)!
+	server_finkey := ks.expand_label(srv_hsk_tsecret, finished_key_label, nullbytes, ks.kdf.size()!)!
 
 	return server_finkey
 }
 
 fn (mut ks KeyScheduler) client_finished_key(cln_hsk_tsecret []u8) ![]u8 {
-	client_finkey := ks.expand_label(cln_hsk_tsecret, tls13.finished_key_label, tls13.nullbytes,
-		ks.kdf.size()!)!
+	client_finkey := ks.expand_label(cln_hsk_tsecret, finished_key_label, nullbytes, ks.kdf.size()!)!
 
 	return client_finkey
 }
@@ -568,6 +545,6 @@ fn (mut ks KeyScheduler) verify_data(finkey []u8, hsk_ctx []Handshake) ![]u8 {
 // resump_msec := ks.resumption_master_secret(psk_bytes, ecdhe_bytes, messages)!
 fn (mut ks KeyScheduler) generate_tls13_resumption(resump_msec []u8, ticket_nonce []u8, length int) ![]u8 {
 	// todo: fix messages handling
-	secret := ks.expand_label(resump_msec, tls13.resumption_label, ticket_nonce, length)!
+	secret := ks.expand_label(resump_msec, resumption_label, ticket_nonce, length)!
 	return secret
 }

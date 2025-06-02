@@ -50,11 +50,11 @@ fn (h HkdfLabel) packed_length() int {
 
 // new_hkdf_label creates new HkdfLabel, where label is label string without prefix
 fn new_hkdf_label(label string, context []u8, length int) !HkdfLabel {
-	combined_label := tls13.tls13_label_prefix + label
+	combined_label := tls13_label_prefix + label
 	hl := HkdfLabel{
-		length: length
+		length:      length
 		tls13_label: combined_label
-		context: context
+		context:     context
 	}
 	hl.verify()!
 	return hl
@@ -66,10 +66,10 @@ fn (hl HkdfLabel) verify() ! {
 		return error('HkdfLabel.tls13_label contains non-ascii string')
 	}
 
-	if hl.tls13_label.len > tls13.max_hkdf_label_length {
+	if hl.tls13_label.len > max_hkdf_label_length {
 		return error('tls13_label.len exceed limit')
 	}
-	if hl.context.len > tls13.max_hkdf_context_length {
+	if hl.context.len > max_hkdf_context_length {
 		return error('hkdflabel context.len exceed limit')
 	}
 
@@ -112,9 +112,9 @@ fn HkdfLabel.decode(b []u8) !HkdfLabel {
 	ctx := r.read_at_least(int(ctx_len))!
 
 	hklabel := HkdfLabel{
-		length: length
+		length:      length
 		tls13_label: tls13_label.bytestr()
-		context: ctx
+		context:     ctx
 	}
 	return hklabel
 }

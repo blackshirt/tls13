@@ -167,9 +167,9 @@ fn TLSRecord.unpack(b []u8) !TLSRecord {
 
 	rec := TLSRecord{
 		ctn_type: ctn_type
-		version: version
-		length: int(length)
-		payload: payload
+		version:  version
+		length:   int(length)
+		payload:  payload
 	}
 	return rec
 }
@@ -188,9 +188,9 @@ fn TLSRecord.from_handshake(h Handshake) !TLSRecord {
 	}
 	rec := TLSRecord{
 		ctn_type: .handshake
-		version: tls_v12
-		length: payload.len
-		payload: payload
+		version:  tls_v12
+		length:   payload.len
+		payload:  payload
 	}
 	return rec
 }
@@ -198,10 +198,10 @@ fn TLSRecord.from_handshake(h Handshake) !TLSRecord {
 // to_plaintext interpretes TLSRecord as a plain TLSPlaintext record
 fn (r TLSRecord) to_plaintext() TLSPlaintext {
 	pl := TLSPlaintext{
-		ctn_type: r.ctn_type
+		ctn_type:       r.ctn_type
 		legacy_version: r.version
-		length: r.length
-		fragment: r.payload
+		length:         r.length
+		fragment:       r.payload
 	}
 	return pl
 }
@@ -209,9 +209,9 @@ fn (r TLSRecord) to_plaintext() TLSPlaintext {
 // to_ciphertext interpretes TLSRecord as a encrypted TLSCiphertext record
 fn (r TLSRecord) to_ciphertext() TLSCiphertext {
 	cxt := TLSCiphertext{
-		opaque_type: r.ctn_type
-		legacy_version: r.version
-		length: r.length
+		opaque_type:      r.ctn_type
+		legacy_version:   r.version
+		length:           r.length
 		encrypted_record: r.payload
 	}
 	return cxt
@@ -248,7 +248,7 @@ fn TLSPlaintext.from_handshake(h Handshake) !TLSPlaintext {
 	}
 	mut rec := TLSPlaintext{
 		ctn_type: .handshake
-		length: payload.len
+		length:   payload.len
 		fragment: payload
 	}
 
@@ -259,10 +259,10 @@ fn TLSPlaintext.from_handshake(h Handshake) !TLSPlaintext {
 fn TLSPlaintext.from_alert(a Alert) !TLSPlaintext {
 	payload := a.pack()!
 	mut rec := TLSPlaintext{
-		ctn_type: .alert
+		ctn_type:       .alert
 		legacy_version: tls_v12
-		length: payload.len
-		fragment: payload
+		length:         payload.len
+		fragment:       payload
 	}
 	return rec
 }
@@ -281,10 +281,10 @@ fn (pxt_list []TLSPlaintext) pack() ![]u8 {
 fn TLSPlaintext.from_ccs(c ChangeCipherSpec) !TLSPlaintext {
 	payload := c.pack()!
 	mut rec := TLSPlaintext{
-		ctn_type: .change_cipher_spec
+		ctn_type:       .change_cipher_spec
 		legacy_version: tls_v12
-		length: payload.len
-		fragment: payload
+		length:         payload.len
+		fragment:       payload
 	}
 
 	return rec
@@ -297,9 +297,9 @@ pub fn (p TLSPlaintext) str() string {
 fn (p TLSPlaintext) to_tls_record() TLSRecord {
 	return TLSRecord{
 		ctn_type: p.ctn_type
-		version: p.legacy_version
-		length: p.length
-		payload: p.fragment
+		version:  p.legacy_version
+		length:   p.length
+		payload:  p.fragment
 	}
 }
 
@@ -349,10 +349,10 @@ fn TLSPlaintext.unpack(b []u8) !TLSPlaintext {
 	fragment := r.read_at_least(int(length))!
 
 	pl := TLSPlaintext{
-		ctn_type: ctn_type
+		ctn_type:       ctn_type
 		legacy_version: version
-		length: int(length)
-		fragment: fragment
+		length:         int(length)
+		fragment:       fragment
 	}
 
 	return pl
@@ -389,8 +389,8 @@ fn (p TLSPlaintext) to_innerplaintext_with_padmode(padm PaddingMode) !TLSInnerPl
 		return error('Fragment and pad length: overflow')
 	}
 	inner := TLSInnerPlaintext{
-		content: p.fragment
-		ctn_type: p.ctn_type
+		content:       p.fragment
+		ctn_type:      p.ctn_type
 		zeros_padding: pad
 	}
 	return inner
@@ -412,10 +412,10 @@ fn (inner TLSInnerPlaintext) to_plaintext() !TLSPlaintext {
 		return error('inner.content length exceed limit')
 	}
 	plain := TLSPlaintext{
-		ctn_type: inner.ctn_type
+		ctn_type:       inner.ctn_type
 		legacy_version: tls_v12
-		length: inner.content.len
-		fragment: inner.content
+		length:         inner.content.len
+		fragment:       inner.content
 	}
 	return plain
 }
@@ -462,8 +462,8 @@ fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 	content := b[0..pos]
 
 	inner := TLSInnerPlaintext{
-		content: content
-		ctn_type: unsafe { ContentType(ctn_type) }
+		content:       content
+		ctn_type:      unsafe { ContentType(ctn_type) }
 		zeros_padding: padding
 	}
 	return inner
@@ -528,9 +528,9 @@ fn TLSCiphertext.unpack(b []u8) !TLSCiphertext {
 	encrypted_record := r.read_at_least(int(length))!
 
 	tc := TLSCiphertext{
-		opaque_type: opaque_type
-		legacy_version: version
-		length: int(length)
+		opaque_type:      opaque_type
+		legacy_version:   version
+		length:           int(length)
 		encrypted_record: encrypted_record
 	}
 	return tc
@@ -539,9 +539,9 @@ fn TLSCiphertext.unpack(b []u8) !TLSCiphertext {
 fn (c TLSCiphertext) to_tls_record() TLSRecord {
 	return TLSRecord{
 		ctn_type: c.opaque_type
-		version: c.legacy_version
-		length: int(c.length)
-		payload: c.encrypted_record
+		version:  c.legacy_version
+		length:   int(c.length)
+		payload:  c.encrypted_record
 	}
 }
 

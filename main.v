@@ -13,7 +13,7 @@ fn main() {
 	// perform TLS 1.3 handshake
 	ses.do_handshake()!
 
-	data := "Test data for TLS 1.3".bytes()
+	data := 'Test data for TLS 1.3'.bytes()
 	n := ses.write_application_data(data)!
 	log.info('Successfully write ${n} bytes encrypted of application data')
 

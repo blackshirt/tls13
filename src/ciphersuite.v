@@ -1,13 +1,12 @@
 module tls13
 
-import math
 import crypto
 import encoding.binary
 import blackshirt.buffer
 import blackshirt.aead
 
 // CipherSuite = u16
-enum CipherSuite {
+enum CipherSuite as u16 {
 	tls_aes_128_gcm_sha256            = 0x1301
 	tls_aes_256_gcm_sha384            = 0x1302
 	tls_chacha20_poly1305_sha256      = 0x1303
@@ -21,7 +20,7 @@ fn (c CipherSuite) packed_length() int {
 }
 
 fn (c CipherSuite) pack() ![]u8 {
-	if int(c) > int(math.max_u16) {
+	if c > max_u16 {
 		return error('CipherSuite exceed limit')
 	}
 	mut out := []u8{len: u16size}
@@ -30,24 +29,24 @@ fn (c CipherSuite) pack() ![]u8 {
 }
 
 fn CipherSuite.unpack(b []u8) !CipherSuite {
-	if b.len != 2 {
+	if b.len != u16size {
 		return error('bad ciphersuite data len')
 	}
-	c := binary.big_endian_u16(b)
-	return unsafe { CipherSuite(c) }
+	val := binary.big_endian_u16(b)
+	return CipherSuite.from_u16(val)!
 }
 
-fn CipherSuite.from(v int) !CipherSuite {
-	if v > int(math.max_u16) {
+fn CipherSuite.from_u16(v u16) !CipherSuite {
+	if v > max_u16 {
 		return error('value exceed limit')
 	}
 	match v {
-		0x1301 { return CipherSuite.tls_aes_128_gcm_sha256 }
-		0x1302 { return CipherSuite.tls_aes_256_gcm_sha384 }
-		0x1303 { return CipherSuite.tls_chacha20_poly1305_sha256 }
-		0x1304 { return CipherSuite.tls_aes_128_ccm_sha256 }
-		0x1305 { return CipherSuite.tls_aes_128_ccm_8_sha256 }
-		0x00ff { return CipherSuite.tls_empty_renegotiation_info_scsv }
+		0x1301 { return .tls_aes_128_gcm_sha256 }
+		0x1302 { return .tls_aes_256_gcm_sha384 }
+		0x1303 { return .tls_chacha20_poly1305_sha256 }
+		0x1304 { return .tls_aes_128_ccm_sha256 }
+		0x1305 { return .tls_aes_128_ccm_8_sha256 }
+		0x00ff { return .tls_empty_renegotiation_info_scsv }
 		else { return error('unsupported ciphersuite value') }
 	}
 }
@@ -77,7 +76,7 @@ fn (cs []CipherSuite) pack() ![]u8 {
 		o := c.pack()!
 		ciphers << o
 	}
-	if ciphers.len > int(math.max_u16) {
+	if ciphers.len > max_u16 {
 		return error('Bad ciphers length')
 	}
 	mut len := []u8{len: 2}
@@ -110,7 +109,7 @@ fn CipherSuiteList.unpack(b []u8) !CipherSuiteList {
 	return CipherSuiteList(cs)
 }
 
-// Utility function to simplify others
+// Utility function to simplify other things
 fn new_aead_cipher(c CipherSuite) !&aead.Cipher {
 	match c {
 		// .tls_aes_128_gcm_sha256 { return new_transcripter(.sha256) }

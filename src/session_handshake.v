@@ -55,12 +55,12 @@ pub fn (mut ses Session) do_full_handshake() ! {
 					// use the same random value as it did in the initial ClientHello
 					// TODO: build new CLientHello respons to HelloRetryRequest
 					newch := ClientHello{
-						legacy_version: tls_v12
-						random: ses.firstch.random
-						legacy_session_id: ses.firstch.legacy_session_id
-						cipher_suites: ses.firstch.cipher_suites
+						legacy_version:             tls_v12
+						random:                     ses.firstch.random
+						legacy_session_id:          ses.firstch.legacy_session_id
+						cipher_suites:              ses.firstch.cipher_suites
 						legacy_compression_methods: ses.firstch.legacy_compression_methods
-						extensions: ses.firstch.extensions
+						extensions:                 ses.firstch.extensions
 					}
 					hsk := HandshakePayload(newch).pack_to_handshake()!
 					_ := ses.send_handshake_msg(hsk)!
@@ -185,9 +185,9 @@ pub fn (mut ses Session) do_post_handshake() ! {
 
 		rec := TLSRecord{
 			ctn_type: ctn_type
-			version: version
-			length: int(length)
-			payload: payload
+			version:  version
+			length:   int(length)
+			payload:  payload
 		}
 
 		// lets try to decrypt
@@ -449,12 +449,12 @@ fn (mut ses Session) send_client_hello() ! {
 			// use the same random value as it did in the initial ClientHello
 			// TODO: build new CLientHello respons to HelloRetryRequest
 			newch := ClientHello{
-				legacy_version: tls_v12
-				random: ses.firstch.random
-				legacy_session_id: ses.firstch.legacy_session_id
-				cipher_suites: ses.firstch.cipher_suites
+				legacy_version:             tls_v12
+				random:                     ses.firstch.random
+				legacy_session_id:          ses.firstch.legacy_session_id
+				cipher_suites:              ses.firstch.cipher_suites
 				legacy_compression_methods: ses.firstch.legacy_compression_methods
-				extensions: ses.firstch.extensions
+				extensions:                 ses.firstch.extensions
 			}
 			hsk := HandshakePayload(newch).pack_to_handshake()!
 			_ := ses.send_handshake_msg(hsk)!
@@ -888,13 +888,13 @@ fn (mut ses Session) build_initial_client_hello() !ClientHello {
 
 	// KeyShare extension
 	ke_entry0 := KeyShareEntry{
-		group: .x25519
+		group:        .x25519
 		key_exchange: pubkey.bytes()!
 	}
 
 	ks := KeyShareExtension{
-		msg_type: .client_hello
-		is_hrr: false
+		msg_type:      .client_hello
+		is_hrr:        false
 		client_shares: [ke_entry0]
 	}
 	ks_ext := ks.pack_to_extension()!
@@ -902,10 +902,10 @@ fn (mut ses Session) build_initial_client_hello() !ClientHello {
 	// TODO: add another supported extension
 
 	ch := ClientHello{
-		random: crandom
+		random:            crandom
 		legacy_session_id: ses.sessid
-		cipher_suites: ciphersuites
-		extensions: exts
+		cipher_suites:     ciphersuites
+		extensions:        exts
 	}
 	return ch
 }

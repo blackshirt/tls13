@@ -1,31 +1,24 @@
 module tls13
 
-import math
 import encoding.binary
 import blackshirt.buffer
 
 // SignatureScheem = u16
-enum SignatureScheme {
-	// RSASSA-PKCS1-v1_5 algorithms
+enum SignatureScheme as u16 {
 	rsa_pkcs1_sha256       = 0x0401
 	rsa_pkcs1_sha384       = 0x0501
 	rsa_pkcs1_sha512       = 0x0601
-	// ECDSA algorithms
 	ecdsa_secp256r1_sha256 = 0x0403
 	ecdsa_secp384r1_sha384 = 0x0503
 	ecdsa_secp521r1_sha512 = 0x0603
-	// RSASSA-PSS algorithms with public key OID rsaEncryption
 	rsa_pss_rsae_sha256    = 0x0804
 	rsa_pss_rsae_sha384    = 0x0805
 	rsa_pss_rsae_sha512    = 0x0806
-	// EdDSA algorithms
 	ed25519                = 0x0807
 	ed448                  = 0x0808
-	// RSASSA-PSS algorithms with public key OID RSASSA-PSS
 	rsa_pss_pss_sha256     = 0x0809
 	rsa_pss_pss_sha384     = 0x080a
 	rsa_pss_pss_sha512     = 0x080b
-	// Legacy algorithms
 	rsa_pkcs1_sha1         = 0x0201
 	ecdsa_sha1             = 0x0203
 }
@@ -35,7 +28,7 @@ fn (s SignatureScheme) packed_length() int {
 }
 
 fn (sig SignatureScheme) pack() ![]u8 {
-	if int(sig) > int(math.max_u16) {
+	if sig > max_u16 {
 		return error('SignatureScheme exceed limit')
 	}
 	mut out := []u8{len: u16size}
@@ -47,8 +40,34 @@ fn SignatureScheme.unpack(b []u8) !SignatureScheme {
 	if b.len != 2 {
 		return error('bad SignatureScheme bytes len')
 	}
-	v := binary.big_endian_u16(b)
-	return unsafe { SignatureScheme(v) }
+	val := binary.big_endian_u16(b)
+	return SignatureScheme.from_u16(val)!
+}
+
+fn SignatureScheme.from_u16(val u16) !SignatureScheme {
+	match val {
+		// vfmt off
+		0x0401 { return .rsa_pkcs1_sha256 }
+		0x0501 { return .rsa_pkcs1_sha384 }
+		0x0601 { return .rsa_pkcs1_sha512 }
+		0x0403 { return .ecdsa_secp256r1_sha256 }
+		0x0503 { return .ecdsa_secp384r1_sha384 }
+		0x0603 { return .ecdsa_secp521r1_sha512 }
+		0x0804 { return .rsa_pss_rsae_sha256 }
+		0x0805 { return .rsa_pss_rsae_sha384 }
+		0x0806 { return .rsa_pss_rsae_sha512 }
+		0x0807 { return .ed25519 }
+		0x0808 { return .ed448 }
+		0x0809 { return .rsa_pss_pss_sha256 }
+		0x080a { return .rsa_pss_pss_sha384 }
+		0x080b { return .rsa_pss_pss_sha512 }
+		0x0201 { return .rsa_pkcs1_sha1 }
+		0x0203 { return .ecdsa_sha1 }
+		else {
+			return error('unsupported SignatureScheme value')
+		}
+		// vfmt on
+	}
 }
 
 type SignatureSchemeList = []SignatureScheme
@@ -72,7 +91,7 @@ fn (sgl SignatureSchemeList) pack() ![]u8 {
 		return error('SignatureSchemeList length: underflow')
 	}
 	length := sgl.len * u16size
-	if length + 1 > int(math.max_u16) {
+	if length + 1 > max_u16 {
 		return error("SignatureSchemeList length: overflow'")
 	}
 
@@ -118,9 +137,9 @@ fn SignatureSchemeList.unpack(b []u8) !SignatureSchemeList {
 fn (sse SignatureSchemeList) pack_to_extension() !Extension {
 	signs := sse.pack()!
 	ext := Extension{
-		tipe: .signature_algorithms
+		tipe:   .signature_algorithms
 		length: signs.len
-		data: signs
+		data:   signs
 	}
 	return ext
 }

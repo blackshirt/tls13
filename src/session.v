@@ -14,15 +14,15 @@ const max_session_ticket = 1
 pub struct Options {
 	group  NamedGroup  = .x25519
 	csuite CipherSuite = .tls_chacha20_poly1305_sha256
-	rto    i64 = 2 * time.second // net.tcp_default_read_timeout = 30 seconds
-	wto    i64 = 2 * time.second // net.tcp_default_write_timeout = 30 seconds
+	rto    i64         = 2 * time.second // net.tcp_default_read_timeout = 30 seconds
+	wto    i64         = 2 * time.second // net.tcp_default_write_timeout = 30 seconds
 }
 
 // Session represents TLs 1.3 capable client
 @[heap]
 struct Session {
 mut:
-	conn       &net.TcpConn = unsafe { nil }
+	conn       &net.TcpConn       = unsafe { nil }
 	rto        i64                = net.tcp_default_read_timeout
 	wto        i64                = net.tcp_default_write_timeout
 	group      NamedGroup         = .x25519
@@ -48,7 +48,7 @@ mut:
 	// Flags that tells session handshake phase.
 	hsk_secured   bool
 	hsk_connected bool
-	hsk_completed bool     // in .ts_application_data
+	hsk_completed bool // in .ts_application_data
 	// How many Alert messages has been received by this Session
 	alert_count int
 	// Session receives HelloRetryRequest, set to true if received
@@ -80,7 +80,7 @@ pub fn new_session(mut conn net.TcpConn, opt Options) !&Session {
 		privkey: ecdhe.PrivateKey{
 			curve: exchanger
 		}
-		pubkey: ecdhe.PublicKey{
+		pubkey:  ecdhe.PublicKey{
 			curve: exchanger
 		}
 	}
@@ -177,7 +177,7 @@ pub fn (mut ses Session) close() ! {
 	// send close notify alert then close
 	a := Alert{
 		level: .warning
-		desc: .close_notify
+		desc:  .close_notify
 	}
 	n := ses.write_alert(a)!
 	log.info('Successfully write alert ${a.desc} ${n} bytes')

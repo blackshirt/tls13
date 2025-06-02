@@ -6,7 +6,7 @@ import blackshirt.buffer
 import blackshirt.ecdhe
 
 // NamedGroup = u16
-enum NamedGroup {
+enum NamedGroup as u16 {
 	secp256r1 = 0x0017
 	secp384r1 = 0x0018
 	secp521r1 = 0x0019
@@ -24,43 +24,45 @@ fn (ng NamedGroup) packed_length() int {
 }
 
 fn (ng NamedGroup) pack() ![]u8 {
-	if int(ng) > int(math.max_u16) {
+	if ng > max_u16 {
 		return error('NamedGroup exceed limit')
 	}
 	mut out := []u8{len: u16size}
-
 	binary.big_endian_put_u16(mut out, u16(ng))
 	return out
 }
 
 fn NamedGroup.unpack(b []u8) !NamedGroup {
-	if b.len != 2 {
+	if b.len != u16size {
 		return error('bad NamedGroup data')
 	}
 
 	v := binary.big_endian_u16(b)
-	out := unsafe { NamedGroup(v) }
-	return out
+	return NamedGroup.from_u16(v)!
 }
 
-fn NamedGroup.from(val u16) !NamedGroup {
+fn NamedGroup.from_u16(val u16) !NamedGroup {
 	match val {
-		0x0017 { return NamedGroup.secp256r1 }
-		0x0018 { return NamedGroup.secp384r1 }
-		0x0019 { return NamedGroup.secp521r1 }
-		0x001D { return NamedGroup.x25519 }
-		0x001E { return NamedGroup.x448 }
-		0x0100 { return NamedGroup.ffdhe2048 }
-		0x0101 { return NamedGroup.ffdhe3072 }
-		0x0102 { return NamedGroup.ffdhe4096 }
-		0x0103 { return NamedGroup.ffdhe6144 }
-		0x0104 { return NamedGroup.ffdhe8192 }
-		else { return error('Unknown NamedGroup:${val}') }
+		0x0017 { return .secp256r1 }
+		0x0018 { return .secp384r1 }
+		0x0019 { return .secp521r1 }
+		0x001D { return .x25519 }
+		0x001E { return .x448 }
+		0x0100 { return .ffdhe2048 }
+		0x0101 { return .ffdhe3072 }
+		0x0102 { return .ffdhe4096 }
+		0x0103 { return .ffdhe6144 }
+		0x0104 { return .ffdhe8192 }
+		else { return error('unknown NamedGroup value') }
 	}
 }
 
 // NamedGroupList = NamedGroup named_group_list<2..2^16-1>;
 type NamedGroupList = []NamedGroup
+
+// constant of namedgroup list size, in bytes
+const min_namedgroup_list = 2
+const max_namedgroup_list = max_u16
 
 fn (mut gl NamedGroupList) append(g NamedGroup) {
 	if g in gl {
@@ -82,7 +84,7 @@ fn (gl NamedGroupList) pack() ![]u8 {
 		return error('Bad NamedGroupList length: underflow')
 	}
 	length := gl.len * u16size
-	if length > int(math.max_u16) {
+	if length > max_namedgroup_list {
 		return error('Bad NamedGroupList length: overflow')
 	}
 	mut out := []u8{}
@@ -127,9 +129,9 @@ fn NamedGroupList.unpack(b []u8) !NamedGroupList {
 fn (gl NamedGroupList) pack_to_extension() !Extension {
 	payload := gl.pack()!
 	ext := Extension{
-		tipe: .supported_groups
+		tipe:   .supported_groups
 		length: payload.len
-		data: payload
+		data:   payload
 	}
 	return ext
 }
@@ -151,37 +153,20 @@ fn NamedGroupList.unpack_from_extension_bytes(b []u8) !NamedGroupList {
 }
 
 // Utilify function
+//
 fn (g NamedGroup) curve() !ecdhe.Curve {
 	match g {
-		.secp256r1 {
-			return ecdhe.Curve.secp256r1
-		}
-		.secp384r1 {
-			return ecdhe.Curve.secp384r1
-		}
-		.secp521r1 {
-			return ecdhe.Curve.secp521r1
-		}
-		.x25519 {
-			return ecdhe.Curve.x25519
-		}
-		.x448 {
-			return ecdhe.Curve.x448
-		}
-		.ffdhe2048 {
-			return ecdhe.Curve.ffdhe2048
-		}
-		.ffdhe3072 {
-			return ecdhe.Curve.ffdhe3072
-		}
-		.ffdhe4096 {
-			return ecdhe.Curve.ffdhe4096
-		}
-		.ffdhe6144 {
-			return ecdhe.Curve.ffdhe6144
-		}
-		.ffdhe8192 {
-			return ecdhe.Curve.ffdhe8192
-		}
+		// vfmt off
+		.secp256r1 { return ecdhe.Curve.secp256r1 }
+		.secp384r1 { return ecdhe.Curve.secp384r1 }
+		.secp521r1 { return ecdhe.Curve.secp521r1 }
+		.x25519 { return ecdhe.Curve.x25519 }
+		.x448 { return ecdhe.Curve.x448 }
+		.ffdhe2048 { return ecdhe.Curve.ffdhe2048 }
+		.ffdhe3072 { return ecdhe.Curve.ffdhe3072 }
+		.ffdhe4096 { return ecdhe.Curve.ffdhe4096 }
+		.ffdhe6144 { return ecdhe.Curve.ffdhe6144 }
+		.ffdhe8192 { return ecdhe.Curve.ffdhe8192 }
+		// vfmt on
 	}
 }

@@ -11,7 +11,7 @@ const client_finished_record = [u8(0x17), 0x03, 0x03, 0x00, 0x35, 0x75, 0xec, 0x
 	0x46, 0xde, 0xb3, 0x84, 0xbd, 0x1c, 0xae, 0xac, 0xab, 0x68, 0x67, 0xd7, 0x26, 0xc4, 0x05, 0x46]
 
 fn test_unpack_tls13_finished_record() ! {
-	rec := TLSRecord.unpack(tls13.client_finished_record)!
+	rec := TLSRecord.unpack(client_finished_record)!
 	assert rec.length == 53
 	assert rec.ctn_type == .application_data
 }
@@ -67,23 +67,23 @@ fn test_session_init() ! {
 
 	// KeyShare extension
 	ke_entry0 := KeyShareEntry{
-		group: .x25519
+		group:        .x25519
 		key_exchange: pubkey.bytes()!
 	}
 
 	ks := KeyShareExtension{
-		msg_type: .client_hello
-		is_hrr: false
+		msg_type:      .client_hello
+		is_hrr:        false
 		client_shares: [ke_entry0]
 	}
 	ks_ext := ks.pack_to_extension()!
 	exts.append(ks_ext)
 	// TODO: add another supported extension
 	ch := ClientHello{
-		random: random
+		random:            random
 		legacy_session_id: sessid
-		cipher_suites: ciphersuites
-		extensions: exts
+		cipher_suites:     ciphersuites
+		extensions:        exts
 	}
 
 	hsk := HandshakePayload(ch).pack_to_handshake()!
@@ -116,9 +116,9 @@ fn test_decrypted_data_from_handshake() {
 	server_hwiv := [u8(24), 147, 74, 228, 50, 185, 46, 107, 41, 28, 17, 64]
 
 	cxt := TLSCiphertext{
-		opaque_type: .application_data
-		legacy_version: tls_v12
-		length: 23
+		opaque_type:      .application_data
+		legacy_version:   tls_v12
+		length:           23
 		encrypted_record: encrypted_record
 	}
 	mut rc := new_record_layer(.tls_chacha20_poly1305_sha256)!
@@ -181,9 +181,9 @@ fn test_ee_encrypt_decrypt() {
 	encrypted_record << ciphertext
 	encrypted_record << tag
 	trec := TLSCiphertext{
-		opaque_type: .application_data
-		legacy_version: tls_v12
-		length: 23
+		opaque_type:      .application_data
+		legacy_version:   tls_v12
+		length:           23
 		encrypted_record: encrypted_record
 	}
 

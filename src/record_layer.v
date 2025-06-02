@@ -104,9 +104,9 @@ fn (mut rc RecordLayer) encrypt(pxt TLSPlaintext, write_key []u8, write_iv []u8)
 
 	// finally, build TLSCiphertext structure and return it
 	cxt := TLSCiphertext{
-		opaque_type: ContentType.application_data
-		legacy_version: tls_v12
-		length: length
+		opaque_type:      ContentType.application_data
+		legacy_version:   tls_v12
+		length:           length
 		encrypted_record: encrypted_record
 	}
 
@@ -169,8 +169,8 @@ fn (rc RecordLayer) uncoalesced_record(pxt TLSPlaintext) ![]Handshake {
 		assert cur_content.len == length
 		out := Handshake{
 			msg_type: msg_type
-			length: length
-			payload: cur_content
+			length:   length
+			payload:  cur_content
 		}
 		// We don't validate handshake order here, its not make a sense.
 		// Its was done in handshake phase when appending handshake message
@@ -200,10 +200,10 @@ fn (rc RecordLayer) coalesce_hsk(hs []Handshake) !TLSPlaintext {
 	}
 	hsp := hs.pack()!
 	pl := TLSPlaintext{
-		ctn_type: .handshake
+		ctn_type:       .handshake
 		legacy_version: tls_v12
-		length: hsp.len
-		fragment: hsp
+		length:         hsp.len
+		fragment:       hsp
 	}
 	return pl
 }
@@ -277,7 +277,7 @@ fn (rc RecordLayer) do_fragment(payload []u8, ctn_type ContentType) ![]TLSPlaint
 	// below 1<<14, directly build plaintext
 	pxt := TLSPlaintext{
 		ctn_type: ctn_type
-		length: payload.len
+		length:   payload.len
 		fragment: payload
 	}
 	pxt_list << pxt

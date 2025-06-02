@@ -430,7 +430,7 @@ fn (hs []Handshake) valid_length_and_sum() bool {
 	for h in hs {
 		sum += int(h.msg_type)
 	}
-	if sum > tls13.fullhsk_msgtype_sum || hs.len > tls13.fullhsk_messages_len {
+	if sum > fullhsk_msgtype_sum || hs.len > fullhsk_messages_len {
 		return false
 	}
 	return true

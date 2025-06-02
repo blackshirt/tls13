@@ -129,17 +129,17 @@ fn test_keyschedule_handshake_secret() ! {
 	// key exchanger
 	kx := ecdhe.new_x25519_exchanger()
 	// server part
-	srv_pvkey := kx.private_key_from_key(tls13.server_x25519_privkey)!
+	srv_pvkey := kx.private_key_from_key(server_x25519_privkey)!
 	srv_pbkey := kx.public_key(srv_pvkey)!
-	assert srv_pbkey.bytes()! == tls13.server_x25519_pubkey
+	assert srv_pbkey.bytes()! == server_x25519_pubkey
 	// client part
-	client_pvkey := kx.private_key_from_key(tls13.client_x25519_privkey)!
+	client_pvkey := kx.private_key_from_key(client_x25519_privkey)!
 	client_pbkey := kx.public_key(client_pvkey)!
-	assert client_pbkey.bytes()! == tls13.client_x25519_pubkey
+	assert client_pbkey.bytes()! == client_x25519_pubkey
 
 	// ecdhe_bytes is shared_secret
 	ecdhe_bytes := kx.shared_secret(srv_pvkey, client_pbkey)!
-	assert ecdhe_bytes == tls13.shared_secret
+	assert ecdhe_bytes == shared_secret
 
 	// salt (32 octets):  6f 26 15 a1 08 c7 02 c5 67 8f 54 fc 9d ba b6 97
 	//     16 c0 76 18 9c 48 25 0c eb ea c3 57 6c 36 11 ba
@@ -173,18 +173,18 @@ fn test_handshakekeys_client_handshake_traffic_secret() ! {
 	// messages << tls13.serverhello_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
 	hctx, _ := ks.hsx.take_hello_context()!
 	// messages := hctx.pack_hello_context(crypto.Hash.sha256)!
 
 	// client_handshake_traffic_secret(hsk_secret []u8, hello_ctx HelloContext)
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	keys := ks.client_handshake_traffic_secret(hsk_secret, hctx)!
 
 	// expected
@@ -207,18 +207,18 @@ fn test_keyschedule_server_handshake_traffic_secret() ! {
 	// messages << tls13.serverhello_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
 	hctx, _ := ks.hsx.take_hello_context()!
 	// messages := hctx.pack_hello_context(crypto.Hash.sha256)!
 
 	// server_handshake_traffic_secret(hsk_secret []u8, HelloContext)
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	keys := ks.server_handshake_traffic_secret(hsk_secret, hctx)!
 
 	// expected
@@ -237,7 +237,7 @@ fn test_keyschedule_derived_keys_for_master() ! {
 		0xb9, 0xdb, 0x25, 0x90, 0xb5, 0x31, 0x90, 0xa6, 0x5b, 0x3e, 0xe2, 0xe4, 0xf1, 0x2d, 0xd7,
 		0xa0, 0xbb, 0x7c, 0xe2, 0x54, 0xb4]
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 
 	// derive_secret(secret []u8, label string, messages []Handshake)!
 	drv_secret := ks.derive_secret(hsk_secret, derived_label, empty_hsk_msgs)!
@@ -248,7 +248,7 @@ fn test_keyschedule_derived_keys_for_master() ! {
 fn test_keyschedule_master_secret() ! {
 	mut ks := new_key_scheduler(crypto.Hash.sha256)!
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 
 	master_secret := ks.master_secret(hsk_secret)!
 
@@ -271,17 +271,17 @@ fn test_keyderivation_server_handshake_write_key_and_iv() ! {
 	// messages << tls13.serverhello_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
 	hctx, _ := ks.hsx.take_hello_context()!
 	// messages := hctx.pack_hello_context(crypto.Hash.sha256)!
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 
 	srv_hsk_traffsecret := ks.server_handshake_traffic_secret(hsk_secret, hctx)!
 
@@ -325,17 +325,17 @@ fn test_keyderivation_server_calculate_finished_key_and_verify_data_of_finished(
 	// messages << tls13.serverhello_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
 	hctx, _ := ks.hsx.take_hello_context()!
 	// msg := hctx.pack_hello_context(crypto.Hash.sha256)!
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	srv_hsk_traffsecret := ks.server_handshake_traffic_secret(hsk_secret, hctx)!
 
 	assert srv_hsk_traffsecret == base_key
@@ -352,9 +352,9 @@ fn test_keyderivation_server_calculate_finished_key_and_verify_data_of_finished(
 	// messages << tls13.encrypted_extension_msg
 	// messages << tls13.server_certificate_msg
 	// messages << tls13.server_certverify_msg
-	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
-	sc := Handshake.unpack(tls13.server_certificate_msg)!
-	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	ee := Handshake.unpack(encrypted_extension_msg)!
+	sc := Handshake.unpack(server_certificate_msg)!
+	scv := Handshake.unpack(server_certverify_msg)!
 	n += ks.append_hskmsg_and_update_hash(ee)!
 	n += ks.append_hskmsg_and_update_hash(sc)!
 	n += ks.append_hskmsg_and_update_hash(scv)!
@@ -387,21 +387,21 @@ fn test_keyderivation_server_client_appts0_and_exporter_master_sec() ! {
 	// mut messages := []u8{}
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
-	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
-	sc := Handshake.unpack(tls13.server_certificate_msg)!
-	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	ee := Handshake.unpack(encrypted_extension_msg)!
+	sc := Handshake.unpack(server_certificate_msg)!
+	scv := Handshake.unpack(server_certverify_msg)!
 	n += ks.append_hskmsg_and_update_hash(ee)!
 	n += ks.append_hskmsg_and_update_hash(sc)!
 	n += ks.append_hskmsg_and_update_hash(scv)!
 
 	// we add server_finished_msg here
-	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	sfin := Handshake.unpack(server_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(sfin)!
 
 	hsx_ctx := ks.hsx
@@ -409,7 +409,7 @@ fn test_keyderivation_server_client_appts0_and_exporter_master_sec() ! {
 	// assert n == messages.len
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	master_secret := ks.master_secret(hsk_secret)!
 	// client_application_traffic_secret_0(master_secret []u8, []Handshake) ![]u8 {
 	client_app_secret0 := ks.client_application_traffic_secret_0(master_secret, hsx_ctx)!
@@ -453,21 +453,21 @@ fn test_keyderivation_derive_write_traffic_keys_and_iv_for_app_data() ! {
 	// messages << tls13.server_finished_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
-	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
-	sc := Handshake.unpack(tls13.server_certificate_msg)!
-	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	ee := Handshake.unpack(encrypted_extension_msg)!
+	sc := Handshake.unpack(server_certificate_msg)!
+	scv := Handshake.unpack(server_certverify_msg)!
 	n += ks.append_hskmsg_and_update_hash(ee)!
 	n += ks.append_hskmsg_and_update_hash(sc)!
 	n += ks.append_hskmsg_and_update_hash(scv)!
 
 	// we add server_finished_msg here
-	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	sfin := Handshake.unpack(server_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(sfin)!
 
 	hsk_ctx := ks.hsx
@@ -475,7 +475,7 @@ fn test_keyderivation_derive_write_traffic_keys_and_iv_for_app_data() ! {
 	// assert n == messages.len
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	master_secret := ks.master_secret(hsk_secret)!
 	srv_app_tsecret := ks.server_application_traffic_secret_0(master_secret, hsk_ctx)!
 
@@ -530,11 +530,11 @@ fn test_keyderivation_derive_server_readtraffickeys_for_handshakedata() ! {
 	// messages << tls13.server_finished_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
 	// ee := Handshake.unpack(tls13.encrypted_extension_msg)!
 	// sc := Handshake.unpack(tls13.server_certificate_msg)!
@@ -562,7 +562,7 @@ fn test_keyderivation_derive_server_readtraffickeys_for_handshakedata() ! {
 	// FIX: server read traffic keys for handshake data is SAME AS with client write traffic keys for handshake data
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	client_hsk_tsecret := ks.client_handshake_traffic_secret(hsk_secret, hsk_ctx)!
 
 	server_hsk_readkey := ks.client_handshake_write_key(client_hsk_tsecret, key_length)!
@@ -610,18 +610,18 @@ fn test_kd_client_calculate_tls13_finished() ! {
 	// messages << tls13.serverhello_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	assert n == tls13.clienthello_msg.len + tls13.serverhello_msg.len
+	assert n == clienthello_msg.len + serverhello_msg.len
 
 	hello_ctx, _ := ks.hsx.take_hello_context()!
 	hello_msg := ks.hsx.pack_handshakes_msg(ks.hash)!
 	assert n == hello_msg.len
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 
 	client_hsts := ks.client_handshake_traffic_secret(hsk_secret, hello_ctx)!
 
@@ -644,15 +644,15 @@ fn test_kd_client_calculate_tls13_finished() ! {
 	// for client to calculates finished message, should include server finished msg
 	// messages << tls13.server_finished_msg
 
-	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
-	sc := Handshake.unpack(tls13.server_certificate_msg)!
-	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	ee := Handshake.unpack(encrypted_extension_msg)!
+	sc := Handshake.unpack(server_certificate_msg)!
+	scv := Handshake.unpack(server_certverify_msg)!
 	n += ks.append_hskmsg_and_update_hash(ee)!
 	n += ks.append_hskmsg_and_update_hash(sc)!
 	n += ks.append_hskmsg_and_update_hash(scv)!
 
 	// we add server_finished_msg here
-	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	sfin := Handshake.unpack(server_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(sfin)!
 
 	hsk_ctx := ks.hsx
@@ -684,19 +684,19 @@ fn test_kd_client_application_write_key_and_iv() ! {
 	// messages << tls13.server_finished_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
-	sc := Handshake.unpack(tls13.server_certificate_msg)!
-	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	ee := Handshake.unpack(encrypted_extension_msg)!
+	sc := Handshake.unpack(server_certificate_msg)!
+	scv := Handshake.unpack(server_certverify_msg)!
 	n += ks.append_hskmsg_and_update_hash(ee)!
 	n += ks.append_hskmsg_and_update_hash(sc)!
 	n += ks.append_hskmsg_and_update_hash(scv)!
 
 	// we add server_finished_msg here
-	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	sfin := Handshake.unpack(server_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(sfin)!
 
 	hello_ctx := ks.hsx
@@ -704,7 +704,7 @@ fn test_kd_client_application_write_key_and_iv() ! {
 	assert n == messages.len
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	master_secret := ks.master_secret(hsk_secret)!
 
 	// client_application_traffic_secret_0(master_secret []u8, hello_ctx) ![]u8 {
@@ -744,23 +744,23 @@ fn test_kd_client_derive_secret_tls13_resumption_master_secret() ! {
 	// messages << tls13.client_finished_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
-	sc := Handshake.unpack(tls13.server_certificate_msg)!
-	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	ee := Handshake.unpack(encrypted_extension_msg)!
+	sc := Handshake.unpack(server_certificate_msg)!
+	scv := Handshake.unpack(server_certverify_msg)!
 	n += ks.append_hskmsg_and_update_hash(ee)!
 	n += ks.append_hskmsg_and_update_hash(sc)!
 	n += ks.append_hskmsg_and_update_hash(scv)!
 
 	// we add server_finished_msg here
-	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	sfin := Handshake.unpack(server_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(sfin)!
 
 	// add upto client_finished_msg
-	clfin := Handshake.unpack(tls13.client_finished_msg)!
+	clfin := Handshake.unpack(client_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(clfin)!
 
 	hello_ctx := ks.hsx
@@ -768,7 +768,7 @@ fn test_kd_client_derive_secret_tls13_resumption_master_secret() ! {
 	assert n == messages.len
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	master_secret := ks.master_secret(hsk_secret)!
 
 	// PRK (32 octets):  18 df 06 84 3d 13 a0 8b f2 a4 49 84 4c 5f 8a 47
@@ -804,23 +804,23 @@ fn test_server_generate_resumption_secret() ! {
 	// messages << tls13.client_finished_msg
 
 	mut n := 0
-	ch := Handshake.unpack(tls13.clienthello_msg)!
-	sh := Handshake.unpack(tls13.serverhello_msg)!
+	ch := Handshake.unpack(clienthello_msg)!
+	sh := Handshake.unpack(serverhello_msg)!
 	n += ks.append_hskmsg_and_update_hash(ch)!
 	n += ks.append_hskmsg_and_update_hash(sh)!
-	ee := Handshake.unpack(tls13.encrypted_extension_msg)!
-	sc := Handshake.unpack(tls13.server_certificate_msg)!
-	scv := Handshake.unpack(tls13.server_certverify_msg)!
+	ee := Handshake.unpack(encrypted_extension_msg)!
+	sc := Handshake.unpack(server_certificate_msg)!
+	scv := Handshake.unpack(server_certverify_msg)!
 	n += ks.append_hskmsg_and_update_hash(ee)!
 	n += ks.append_hskmsg_and_update_hash(sc)!
 	n += ks.append_hskmsg_and_update_hash(scv)!
 
 	// we add server_finished_msg here
-	sfin := Handshake.unpack(tls13.server_finished_msg)!
+	sfin := Handshake.unpack(server_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(sfin)!
 
 	// add upto client_finished_msg
-	clfin := Handshake.unpack(tls13.client_finished_msg)!
+	clfin := Handshake.unpack(client_finished_msg)!
 	n += ks.append_hskmsg_and_update_hash(clfin)!
 
 	hello_ctx := ks.hsx
@@ -828,7 +828,7 @@ fn test_server_generate_resumption_secret() ! {
 	assert n == messages.len
 
 	early_secret := ks.early_secret(nullbytes)!
-	hsk_secret := ks.handshake_secret(early_secret, tls13.shared_secret)!
+	hsk_secret := ks.handshake_secret(early_secret, shared_secret)!
 	master_secret := ks.master_secret(hsk_secret)!
 
 	// prk

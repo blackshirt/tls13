@@ -19,7 +19,7 @@ fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
 	pubkey := kx.public_key(privkey)!
 
 	ks := KeyShareEntry{
-		group: g
+		group:        g
 		key_exchange: pubkey.bytes()!
 	}
 	return ks
@@ -132,9 +132,9 @@ fn (ks KeyShareExtension) pack() ![]u8 {
 fn (ks KeyShareExtension) pack_to_extension() !Extension {
 	payload := ks.pack()!
 	ext := Extension{
-		tipe: .key_share
+		tipe:   .key_share
 		length: payload.len
-		data: payload
+		data:   payload
 	}
 	return ext
 }
@@ -181,8 +181,8 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 				i += 2 + 2 + e.key_exchange.len
 			}
 			ksc := KeyShareExtension{
-				msg_type: .client_hello
-				is_hrr: false
+				msg_type:      .client_hello
+				is_hrr:        false
 				client_shares: entries
 			}
 			return ksc
@@ -192,8 +192,8 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 				// hello_retry_request
 				group := NamedGroup.unpack(data)!
 				krr := KeyShareExtension{
-					msg_type: .server_hello
-					is_hrr: true
+					msg_type:       .server_hello
+					is_hrr:         true
 					selected_group: group
 				}
 				return krr
@@ -201,8 +201,8 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 				// server_hello
 				server_share := KeyShareEntry.unpack(data)!
 				ksh := KeyShareExtension{
-					msg_type: .server_hello
-					is_hrr: false
+					msg_type:     .server_hello
+					is_hrr:       false
 					server_share: server_share
 				}
 				return ksh
@@ -212,8 +212,8 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 			// hello_retry_request
 			group := NamedGroup.unpack(data)!
 			krr := KeyShareExtension{
-				msg_type: .hello_retry_request
-				is_hrr: true
+				msg_type:       .hello_retry_request
+				is_hrr:         true
 				selected_group: group
 			}
 			return krr

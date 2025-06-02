@@ -1,14 +1,16 @@
 module tls13
 
-import math
+// B.2.  Alert Messages
 
-enum AlertLevel {
-	warning = 1
-	fatal   = 2
+// enum { warning(1), fatal(2), (255) } AlertLevel;
+enum AlertLevel as u8 {
+	warning = 0x01
+	fatal   = 0x02
+	// 255
 }
 
 fn (a AlertLevel) pack() ![]u8 {
-	if int(a) > math.max_u8 {
+	if a > max_u8 {
 		return error('AlertLevel value exceed')
 	}
 	return [u8(a)]
@@ -18,8 +20,15 @@ fn AlertLevel.unpack(b []u8) !AlertLevel {
 	if b.len != 1 {
 		return error('b.len != 1 for AlertLevel')
 	}
-	val := b[0]
-	return unsafe { AlertLevel(val) }
+	return AlertLevel.from_u8(b[0])!
+}
+
+fn AlertLevel.from_u8(v u8) !AlertLevel {
+	match val {
+		0x01 { return .warning }
+		0x02 { return .fatal }
+		else { return error('unsupported alert level') }
+	}
 }
 
 fn (al AlertLevel) str() string {
@@ -29,7 +38,7 @@ fn (al AlertLevel) str() string {
 	}
 }
 
-enum AlertDescription {
+enum AlertDescription as u8 {
 	close_notify                    = 0
 	unexpected_message              = 10
 	bad_record_mac                  = 20
@@ -67,19 +76,57 @@ enum AlertDescription {
 }
 
 fn (ad AlertDescription) pack() ![]u8 {
-	if int(ad) > math.max_u8 {
+	if ad > max_u8 {
 		return error('AlertDescription exceed limit')
 	}
-	val := [u8(ad)]
-	return val
+	return [u8(ad)]
 }
 
 fn AlertDescription.unpack(b []u8) !AlertDescription {
 	if b.len != 1 {
 		return error('b.len != 1 for AlertDescription')
 	}
-	val := b[0]
-	return unsafe { AlertDescription(val) }
+	return AlertDescription.from_u8(b[0])!
+}
+
+fn AlertDescription.from_u8(val u8) !AlertDescription {
+	match val {
+		0 { return .close_notify }
+		10 { return .unexpected_message }
+		20 { return .bad_record_mac }
+		21 { return .decryption_failed } // _RESERVED
+		22 { return .record_overflow }
+		30 { return .decompression_failure } // _RESERVED
+		40 { return .handshake_failure }
+		41 { return .no_certificate } // RESERVED
+		42 { return .bad_certificate }
+		43 { return .unsupported_certificate }
+		44 { return .certificate_revoked }
+		45 { return .certificate_expired }
+		46 { return .certificate_unknown }
+		47 { return .illegal_parameter }
+		48 { return .unknown_ca }
+		49 { return .access_denied }
+		50 { return .decode_error }
+		51 { return .decrypt_error }
+		60 { return .export_restriction } //_RESERVED
+		70 { return .protocol_version }
+		71 { return .insufficient_security }
+		80 { return .internal_error }
+		86 { return .inappropriate_fallback }
+		90 { return .user_canceled }
+		100 { return .no_renegotiation } //_RESERVED
+		109 { return .missing_extension }
+		110 { return .unsupported_extension }
+		111 { return .certificate_unobtainable } //_RESERVED
+		112 { return .unrecognized_name }
+		113 { return .bad_certificate_status_response }
+		114 { return .bad_certificate_hash_value } //_RESERVED
+		115 { return .unknown_psk_identity }
+		116 { return .certificate_required }
+		120 { return .no_application_protocol }
+		else { return error('unsupported AlertDescription value') }
+	}
 }
 
 struct Alert {
@@ -99,22 +146,20 @@ fn Alert.unpack(b []u8) !Alert {
 	if b.len != 2 {
 		return error('b.len != 2 for Alert.unpack')
 	}
-	lvl := b[0]
-	desc := b[1]
+	level := AlertLevel.from_u8(b[0])!
+	desc := AlertDescription.from_u8(b[1])!
 
-	alert := Alert{
-		level: unsafe { AlertLevel(lvl) }
-		desc: unsafe { AlertDescription(desc) }
+	return Alert{
+		level: level
+		desc:  desc
 	}
-
-	return alert
 }
 
 // new_alert creates new Alert instance
 pub fn new_alert(level AlertLevel, desc AlertDescription) Alert {
 	alert := Alert{
 		level: level
-		desc: desc
+		desc:  desc
 	}
 	return alert
 }

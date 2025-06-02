@@ -5,75 +5,75 @@ import encoding.binary
 import blackshirt.buffer
 
 // ExtensionType = u16
-enum ExtensionType {
-	server_name                            = 0
-	max_fragment_length                    = 1
-	client_certificate_url                 = 2
-	trusted_ca_keys                        = 3
-	truncated_hmac                         = 4
-	status_request                         = 5
-	user_mapping                           = 6
-	client_authz                           = 7
-	server_authz                           = 8
-	cert_type                              = 9
-	supported_groups                       = 10
-	ec_point_formats                       = 11
-	srp                                    = 12
-	signature_algorithms                   = 13
-	use_srtp                               = 14
-	heartbeat                              = 15
-	application_layer_protocol_negotiation = 16
-	status_request_v2                      = 17
-	signed_certificate_timestamp           = 18
-	client_certificate_type                = 19
-	server_certificate_type                = 20
-	padding                                = 21
-	encrypt_then_mac                       = 22
-	extended_master_secret                 = 23
-	token_binding                          = 24
-	cached_info                            = 25
-	tls_lts                                = 26
-	compress_certificate                   = 27
-	record_size_limit                      = 28
-	pwd_protect                            = 29
-	pwd_clear                              = 30
-	password_salt                          = 31
-	ticket_pinning                         = 32
-	tls_cert_with_extern_psk               = 33
-	delegated_credential                   = 34
-	session_ticket                         = 35
-	tlmsp                                  = 36
-	tlmsp_proxying                         = 37
-	tlmsp_delegate                         = 38
-	supported_ekt_ciphers                  = 39
-	reserved_40                            = 40 // Used but never assigned
-	pre_shared_key                         = 41
-	early_data                             = 42
-	supported_versions                     = 43
-	cookie                                 = 44
-	psk_key_exchange_modes                 = 45
-	reserved_46                            = 46 // Used but never assigned
-	certificate_authorities                = 47
-	oid_filters                            = 48
-	post_handshake_auth                    = 49
-	signature_algorithms_cert              = 50
-	key_share                              = 51
-	transparency_info                      = 52
-	connection_id_deprecated               = 53 // deprecated
-	connection_id                          = 54
-	external_id_hash                       = 55
-	external_session_id                    = 56
-	quic_transport_parameters              = 57
-	ticket_request                         = 58
-	dnssec_chain                           = 59
-	sequence_number_encryption_algorithms  = 60
-	reserved_for_private_use               = 65280
-	renegotiation_info                     = 65281
-	unassigned                             = 0xff
+enum ExtensionType as u16 {
+	server_name                           = 0
+	max_fragment_length                   = 1
+	client_certificate_url                = 2
+	trusted_ca_keys                       = 3
+	truncated_hmac                        = 4
+	status_request                        = 5
+	user_mapping                          = 6
+	client_authz                          = 7
+	server_authz                          = 8
+	cert_type                             = 9
+	supported_groups                      = 10
+	ec_point_formats                      = 11
+	srp                                   = 12
+	signature_algorithms                  = 13
+	use_srtp                              = 14
+	heartbeat                             = 15
+	apln                                  = 16
+	status_request_v2                     = 17
+	signed_certificate_timestamp          = 18
+	client_certificate_type               = 19
+	server_certificate_type               = 20
+	padding                               = 21
+	encrypt_then_mac                      = 22
+	extended_master_secret                = 23
+	token_binding                         = 24
+	cached_info                           = 25
+	tls_lts                               = 26
+	compress_certificate                  = 27
+	record_size_limit                     = 28
+	pwd_protect                           = 29
+	pwd_clear                             = 30
+	password_salt                         = 31
+	ticket_pinning                        = 32
+	tls_cert_with_extern_psk              = 33
+	delegated_credential                  = 34
+	session_ticket                        = 35
+	tlmsp                                 = 36
+	tlmsp_proxying                        = 37
+	tlmsp_delegate                        = 38
+	supported_ekt_ciphers                 = 39
+	reserved_40                           = 40 // Used but never assigned
+	pre_shared_key                        = 41
+	early_data                            = 42
+	supported_versions                    = 43
+	cookie                                = 44
+	psk_key_exchange_modes                = 45
+	reserved_46                           = 46 // Used but never assigned
+	certificate_authorities               = 47
+	oid_filters                           = 48
+	post_handshake_auth                   = 49
+	signature_algorithms_cert             = 50
+	key_share                             = 51
+	transparency_info                     = 52
+	connection_id_deprecated              = 53 // deprecated
+	connection_id                         = 54
+	external_id_hash                      = 55
+	external_session_id                   = 56
+	quic_transport_parameters             = 57
+	ticket_request                        = 58
+	dnssec_chain                          = 59
+	sequence_number_encryption_algorithms = 60
+	reserved_for_private_use              = 65280
+	renegotiation_info                    = 65281
+	unassigned                            = 0xff
 }
 
 fn (et ExtensionType) pack() ![]u8 {
-	if int(et) > int(math.max_u16) {
+	if et > max_u16 {
 		return error('ExtensionType exceed limit')
 	}
 	mut out := []u8{len: u16size}
@@ -81,15 +81,89 @@ fn (et ExtensionType) pack() ![]u8 {
 	return out
 }
 
+fn ExtensionType.from_u16(val u16) !ExtensionType {
+	match val {
+		// vfmt off
+		0 { return .server_name }
+		1 { return .max_fragment_length }
+		2 { return .client_certificate_url }
+		3 { return .trusted_ca_keys }
+		4 { return .truncated_hmac }
+		5 { return .status_request }
+		6 { return .user_mapping }
+		7 { return .client_authz }
+		8 { return .server_authz }
+		9 { return .cert_type }
+		10 { return .supported_groups }
+		11 { return .ec_point_formats }
+		12 { return srp }
+		13 { return .signature_algorithms }
+		14 { return .use_srtp }
+		15 { return .heartbeat }
+		16 { return .apln }
+		17 { return .status_request_v2 }
+		18 { return .signed_certificate_timestamp }
+		19 { return .client_certificate_type }
+		20 { return .server_certificate_type }
+		21 { return .padding }
+		22 { return .encrypt_then_mac }
+		23 { return .extended_master_secret }
+		24 { return .token_binding }
+		25 { return .cached_info }
+		26 { return .tls_lts }
+		27 { return .compress_certificate }
+		28 { return .record_size_limit }
+		29 { return .pwd_protect }
+		30 { return .pwd_clear }
+		31 { return .password_salt }
+		32 { return .ticket_pinning }
+		33 { return .tls_cert_with_extern_psk }
+		34 { return .delegated_credential }
+		35 { return .session_ticket }
+		36 { return .tlmsp }
+		37 { return .tlmsp_proxying }
+		38 { return .tlmsp_delegate }
+		39 { return .supported_ekt_ciphers }
+		40 { return .reserved_40 } // Used but never assigned
+		41 { return .pre_shared_key }
+		42 { return .early_data }
+		43 { return .supported_versions }
+		44 { return .cookie }
+		45 { return .psk_key_exchange_modes }
+		46 { return .reserved_46 } // Used but never assigned
+		47 { return .certificate_authorities }
+		48 { return .oid_filters }
+		49 { return .post_handshake_auth }
+		50 { return .signature_algorithms_cert }
+		51 { return .key_share }
+		52 { return .transparency_info }
+		53 { return .connection_id_deprecated } // deprecated
+		54 { return .connection_id }
+		55 { return .external_id_hash }
+		56 { return .external_session_id }
+		57 { return .quic_transport_parameters }
+		58 { return .ticket_request }
+		59 { return .dnssec_chain }
+		60 { return .sequence_number_encryption_algorithms }
+		65280 { return .reserved_for_private_use }
+		65281 { return renegotiation_info }
+		0xff { return .unassigned }
+		else {
+			return error('unsupported ExtensionType value')
+		}
+		// vfmt on
+	}
+}
+
 fn ExtensionType.unpack(b []u8) !ExtensionType {
 	if b.len != 2 {
 		return error('Bad ExtensionType bytes')
 	}
 	val := binary.big_endian_u16(b)
-	if val > math.max_u16 {
+	if val > max_u16 {
 		return error('ExtensionType value exceed limit')
 	}
-	return unsafe { ExtensionType(val) }
+	return ExtensionType.from_u16(val)!
 }
 
 struct Extension {
@@ -144,9 +218,9 @@ fn Extension.unpack(b []u8) !Extension {
 	ext_data := r.read_at_least(int(length))!
 
 	e := Extension{
-		tipe: tipe
+		tipe:   tipe
 		length: int(length)
-		data: ext_data
+		data:   ext_data
 	}
 	return e
 }

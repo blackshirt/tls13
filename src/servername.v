@@ -70,7 +70,7 @@ fn new_server_name(name string) !ServerName {
 	}
 	return ServerName{
 		name_type: .host_name
-		name: name.bytes()
+		name:      name.bytes()
 	}
 }
 
@@ -80,7 +80,7 @@ fn new_hostname(host []u8) !ServerName {
 	}
 	return ServerName{
 		name_type: .host_name
-		name: host
+		name:      host
 	}
 }
 
@@ -132,7 +132,7 @@ fn ServerName.unpack(b []u8) !ServerName {
 
 	sv := ServerName{
 		name_type: unsafe { NameType(nt) }
-		name: hostname
+		name:      hostname
 	}
 
 	return sv
@@ -214,9 +214,9 @@ fn ServerNameList.unpack(b []u8) !ServerNameList {
 fn (se ServerNameList) pack_to_extension() !Extension {
 	payload := se.pack()!
 	ext := Extension{
-		tipe: .server_name
+		tipe:   .server_name
 		length: payload.len
-		data: payload
+		data:   payload
 	}
 	return ext
 }

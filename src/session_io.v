@@ -41,9 +41,9 @@ pub fn (mut ses Session) read_tls_record() !TLSRecord {
 
 	rec := TLSRecord{
 		ctn_type: ctn_type
-		version: version
-		length: int(length)
-		payload: payload
+		version:  version
+		length:   int(length)
+		payload:  payload
 	}
 	return rec
 }
@@ -264,10 +264,10 @@ pub fn (mut ses Session) write_application_data(data []u8) !int {
 	}
 
 	pxt := TLSPlaintext{
-		ctn_type: .application_data
+		ctn_type:       .application_data
 		legacy_version: tls_v12
-		length: data.len
-		fragment: data
+		length:         data.len
+		fragment:       data
 	}
 	cxt := ses.reclayer.encrypt(pxt, ses.ks.cln_app_wrkey, ses.ks.cln_app_wriv)!
 	return ses.write_ciphertext(cxt)!

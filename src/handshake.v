@@ -180,7 +180,7 @@ fn (h Handshake) pack() ![]u8 {
 }
 
 fn Handshake.unpack(b []u8) !Handshake {
-	if b.len < tls13.handshake_header_size {
+	if b.len < handshake_header_size {
 		return error('Underflow of Handshake bytes')
 	}
 	mut r := buffer.new_reader(b)
@@ -197,8 +197,8 @@ fn Handshake.unpack(b []u8) !Handshake {
 	assert payload.len == length
 	out := Handshake{
 		msg_type: msg_type
-		length: length
-		payload: payload
+		length:   length
+		payload:  payload
 	}
 
 	return out
@@ -226,7 +226,7 @@ type HandshakeList = []Handshake
 // unpack_to_multi_handshake add supports to this situation, its unpack bytes array as
 // array of Handshake
 fn unpack_to_multi_handshake(b []u8) ![]Handshake {
-	if b.len < tls13.handshake_header_size {
+	if b.len < handshake_header_size {
 		return error('unpack_to_multi_handshakes: Underflow of Handshakes bytes')
 	}
 	mut hs := []Handshake{}
@@ -302,8 +302,8 @@ fn (h HandshakePayload) pack_to_handshake() !Handshake {
 
 	hsk := Handshake{
 		msg_type: msg_type
-		length: length
-		payload: payload
+		length:   length
+		payload:  payload
 	}
 	return hsk
 }
@@ -366,11 +366,11 @@ fn (h HandshakePayload) pack() ![]u8 {
 struct ClientHello {
 mut:
 	legacy_version             ProtoVersion = ProtoVersion(0x0303) // TLS v1.2
-	random                     []u8 // 32 bytes
-	legacy_session_id          []u8 // <0..32>;
+	random                     []u8          // 32 bytes
+	legacy_session_id          []u8          // <0..32>;
 	cipher_suites              []CipherSuite // <2..2^16-2>;
-	legacy_compression_methods u8 //<1..2^8-1>;
-	extensions                 []Extension // <8..2^16-1>;
+	legacy_compression_methods u8            //<1..2^8-1>;
+	extensions                 []Extension   // <8..2^16-1>;
 }
 
 fn (ch ClientHello) packed_length() int {
@@ -448,12 +448,12 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	ch := ClientHello{
-		legacy_version: version
-		random: random
-		legacy_session_id: legacy
-		cipher_suites: ciphers
+		legacy_version:             version
+		random:                     random
+		legacy_session_id:          legacy
+		cipher_suites:              ciphers
 		legacy_compression_methods: cmethd
-		extensions: extensions
+		extensions:                 extensions
 	}
 	return ch
 }
@@ -470,7 +470,7 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 		return error('Bad ServerHello.random length')
 	}
 	last8 := sh.random[24..31]
-	if hmac.equal(last8, tls13.tls12_random_magic) || hmac.equal(last8, tls13.tls12_random_magic) {
+	if hmac.equal(last8, tls12_random_magic) || hmac.equal(last8, tls12_random_magic) {
 		return error('Bad downgrade ServerHello.random detected')
 	}
 	// A client which receives a legacy_session_id_echo field that does not match what it sent
@@ -568,18 +568,18 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	sh := ServerHello{
-		legacy_version: version
-		random: random
-		legacy_session_id_echo: sessid
-		cipher_suite: cipher
+		legacy_version:            version
+		random:                    random
+		legacy_session_id_echo:    sessid
+		cipher_suite:              cipher
 		legacy_compression_method: comp_meth
-		extensions: extensions
+		extensions:                extensions
 	}
 	return sh
 }
 
 fn (sh ServerHello) is_hrr() bool {
-	return hmac.equal(sh.random, tls13.helloretry_magic)
+	return hmac.equal(sh.random, helloretry_magic)
 }
 
 struct EndOfEarlyData {}
@@ -642,7 +642,7 @@ fn CertificateRequest.unpack(b []u8) !CertificateRequest {
 	exts := ExtensionList.unpack(exts_bytes)!
 
 	cr := CertificateRequest{
-		crq_ctx: crctx
+		crq_ctx:    crctx
 		extensions: exts
 	}
 	return cr
@@ -729,7 +729,7 @@ fn CertificateEntry.unpack(b []u8) !CertificateEntry {
 	exts := ExtensionList.unpack(exts_data)!
 
 	ce := CertificateEntry{
-		cert_data: cert_data
+		cert_data:  cert_data
 		extensions: exts
 	}
 	return ce
@@ -794,7 +794,7 @@ fn CertificateEntryList.unpack(b []u8) !CertificateEntryList {
 }
 
 struct Certificate {
-	cert_req_ctx []u8 // <0..2^8-1>;
+	cert_req_ctx []u8               // <0..2^8-1>;
 	cert_list    []CertificateEntry // <0..2^24-1>;
 }
 
@@ -841,7 +841,7 @@ fn Certificate.unpack(b []u8) !Certificate {
 
 	c := Certificate{
 		cert_req_ctx: creq
-		cert_list: cert_list
+		cert_list:    cert_list
 	}
 	return c
 }
@@ -984,10 +984,10 @@ fn NewSessionTicket.unpack(b []u8) !NewSessionTicket {
 
 	st := NewSessionTicket{
 		tkt_lifetime: lifetime
-		tkt_ageadd: ageadd
-		tkt_nonce: tkt_nonce
-		ticket: ticket
-		extensions: exts
+		tkt_ageadd:   ageadd
+		tkt_nonce:    tkt_nonce
+		ticket:       ticket
+		extensions:   exts
 	}
 	return st
 }

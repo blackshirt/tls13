@@ -94,7 +94,7 @@ const newsessionticket_msg = [u8(0x04), 0x00, 0x00, 0xc9, 0x00, 0x00, 0x00, 0x1e
 	0x04, 0x00]
 
 fn test_serverhello_with_hrr_msg_from_rfc848() ! {
-	hsk := Handshake.unpack(tls13.hrr_msg)!
+	hsk := Handshake.unpack(hrr_msg)!
 	assert hsk.msg_type == .server_hello
 	assert hsk.is_hrr()! == true
 
@@ -108,11 +108,11 @@ fn test_serverhello_with_hrr_msg_from_rfc848() ! {
 	// pack back
 	hp := HandshakePayload(sh)
 	back := hp.pack_to_handshake_bytes()!
-	assert back == tls13.hrr_msg
+	assert back == hrr_msg
 }
 
 fn test_clienthello_pack_unpack_from_rfc8448() ! {
-	hsk := Handshake.unpack(tls13.handshake_data)!
+	hsk := Handshake.unpack(handshake_data)!
 	assert hsk.msg_type == .client_hello
 	ch := ClientHello.unpack(hsk.payload)!
 	assert ch.packed_length() == hsk.length
@@ -128,11 +128,11 @@ fn test_clienthello_pack_unpack_from_rfc8448() ! {
 	// pack back
 	hp := HandshakePayload(ch)
 	back := hp.pack_to_handshake_bytes()!
-	assert back == tls13.handshake_data
+	assert back == handshake_data
 }
 
 fn test_serverhello_pack_unpack_from_rfc8448() ! {
-	hsk := Handshake.unpack(tls13.serverhello_msg)!
+	hsk := Handshake.unpack(serverhello_msg)!
 	assert hsk.msg_type == .server_hello
 	sh := ServerHello.unpack(hsk.payload)!
 	assert sh.packed_length() == hsk.length
@@ -141,7 +141,7 @@ fn test_serverhello_pack_unpack_from_rfc8448() ! {
 	// pack back
 	hp := HandshakePayload(sh)
 	back := hp.pack_to_handshake_bytes()!
-	assert back == tls13.serverhello_msg
+	assert back == serverhello_msg
 }
 
 fn test_serverhello_pack_unpack_from_tls13_xargs_org() ! {
@@ -167,7 +167,7 @@ fn test_serverhello_pack_unpack_from_tls13_xargs_org() ! {
 }
 
 fn test_certificate_handshake_message_pack_unpack_rfc8448() ! {
-	hsk := Handshake.unpack(tls13.certificate_msg)!
+	hsk := Handshake.unpack(certificate_msg)!
 	// dump(hsk)
 	cert := Certificate.unpack(hsk.payload)!
 	assert cert.cert_req_ctx.len == 0
@@ -176,17 +176,17 @@ fn test_certificate_handshake_message_pack_unpack_rfc8448() ! {
 
 	// unpack back
 	cert_back_hsk := HandshakePayload(cert).pack_to_handshake_bytes()!
-	assert cert_back_hsk == tls13.certificate_msg
+	assert cert_back_hsk == certificate_msg
 }
 
 fn test_certificate_verify_handshake_message_pack_unpack_rfc8448() ! {
-	hsk := Handshake.unpack(tls13.cert_verify_msg)!
+	hsk := Handshake.unpack(cert_verify_msg)!
 	cert_verify := CertificateVerify.unpack(hsk.payload)!
 	assert cert_verify.algorithm == .rsa_pss_rsae_sha256
 
 	// unpack back
 	certver_back_hsk := HandshakePayload(cert_verify).pack_to_handshake_bytes()!
-	assert certver_back_hsk == tls13.cert_verify_msg
+	assert certver_back_hsk == cert_verify_msg
 }
 
 fn test_certificate_verify_handshake_message_pack_unpack_tls13_xargs_org() ! {
@@ -220,13 +220,13 @@ fn test_certificate_verify_handshake_message_pack_unpack_tls13_xargs_org() ! {
 }
 
 fn test_handshake_finished_msg_pack_unpack_rfc8448() ! {
-	hsk := Handshake.unpack(tls13.finished_msg)!
+	hsk := Handshake.unpack(finished_msg)!
 	assert hsk.length == 32
 	fin := Finished.unpack(hsk.payload)!
 	assert fin.verify_data.hex() == '9b9b141d906337fbd2cbdce71df4deda4ab42c309572cb7fffee5454b78f0718'
 	// unpack back
 	fin_back_hsk := HandshakePayload(fin).pack_to_handshake_bytes()!
-	assert fin_back_hsk == tls13.finished_msg
+	assert fin_back_hsk == finished_msg
 }
 
 fn test_multi_handshake_payload_rfc8448() ! {
@@ -284,11 +284,11 @@ fn test_multi_handshake_payload_rfc8448() ! {
 }
 
 fn test_newsessionticket_msg_pack_unpack() ! {
-	hsk := Handshake.unpack(tls13.newsessionticket_msg)!
+	hsk := Handshake.unpack(newsessionticket_msg)!
 	// dump(hsk)
 	newsessticket := NewSessionTicket.unpack(hsk.payload)!
 
 	// unpack back
 	newsessticket_back_hsk := HandshakePayload(newsessticket).pack_to_handshake_bytes()!
-	assert newsessticket_back_hsk == tls13.newsessionticket_msg
+	assert newsessticket_back_hsk == newsessionticket_msg
 }

@@ -25,7 +25,7 @@ fn (up UncompressedPointRepresentation) pack() ![]u8 {
 }
 
 fn UncompressedPointRepresentation.unpack(b []u8) !UncompressedPointRepresentation {
-	if b.len < 1 + 2 * tls13.coordinate_length {
+	if b.len < 1 + 2 * coordinate_length {
 		return error('bad UncompressedPointRepresentation bytes')
 	}
 	mut r := buffer.new_reader(b)
@@ -33,13 +33,13 @@ fn UncompressedPointRepresentation.unpack(b []u8) !UncompressedPointRepresentati
 	if legform != u8(0x04) {
 		return error('Bad legacy_form')
 	}
-	pointx := r.read_at_least(tls13.coordinate_length)!
-	pointy := r.read_at_least(tls13.coordinate_length)!
+	pointx := r.read_at_least(coordinate_length)!
+	pointy := r.read_at_least(coordinate_length)!
 
 	up := UncompressedPointRepresentation{
 		legacy_form: legform
-		pointx: pointx
-		pointy: pointy
+		pointx:      pointx
+		pointy:      pointy
 	}
 	return up
 }
@@ -204,7 +204,7 @@ fn PskIdentity.unpack(b []u8) !PskIdentity {
 	obf := r.read_u32()!
 
 	psi := PskIdentity{
-		identity: idb
+		identity:   idb
 		obf_tktage: obf
 	}
 	return psi
@@ -367,7 +367,7 @@ fn OfferedPsks.unpack(b []u8) !OfferedPsks {
 
 	ofp := OfferedPsks{
 		identities: idn
-		binders: binders
+		binders:    binders
 	}
 	return ofp
 }
@@ -432,7 +432,7 @@ fn PreSharedKeyExtension.unpack(b []u8, msg_type HandshakeType) !PreSharedKeyExt
 			}
 			val := binary.big_endian_u16(b)
 			psx := PreSharedKeyExtension{
-				msg_type: msg_type
+				msg_type:     msg_type
 				sel_identity: val
 			}
 			return psx
