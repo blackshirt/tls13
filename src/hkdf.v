@@ -1,13 +1,10 @@
 module tls13
 
-import math
 import encoding.binary
 import blackshirt.buffer
 
 const max_hkdf_label_length = 255
-
 const max_hkdf_context_length = 255
-
 const tls13_label_prefix = 'tls13 '
 
 // This add support for HKDF-Expand-Label and other machinery for TLS 1.3
@@ -73,7 +70,7 @@ fn (hl HkdfLabel) verify() ! {
 		return error('hkdflabel context.len exceed limit')
 	}
 
-	if hl.length > math.max_u16 {
+	if hl.length > max_u16 {
 		return error('hl.length exceed limit')
 	}
 }

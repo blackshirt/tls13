@@ -5,6 +5,8 @@ import encoding.binary
 import blackshirt.buffer
 import blackshirt.ecdhe
 
+const min_keyshareentry_size = 4 // 5?
+
 struct KeyShareEntry {
 mut:
 	group    NamedGroup = .x25519
@@ -25,11 +27,12 @@ fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
 	return ks
 }
 
+@[direct_array_access; inline]
 fn (ks KeyShareEntry) pack() ![]u8 {
 	if ks.kxchange.len < 1 {
 		return error('KeyShareEntry length: underflow')
 	}
-	if ks.kxchange.len > math.max_u16 {
+	if ks.kxchange.len > max_u16 {
 		return error('KeyShareEntry length: overflow')
 	}
 	group := ks.group.pack()!
@@ -44,8 +47,9 @@ fn (ks KeyShareEntry) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn KeyShareEntry.unpack(b []u8) !KeyShareEntry {
-	if b.len < 5 {
+	if b.len < min_keyshareentry_size {
 		return error('KeyShareEntry.unpack: underflow')
 	}
 	mut r := buffer.new_reader(b)
@@ -53,14 +57,16 @@ fn KeyShareEntry.unpack(b []u8) !KeyShareEntry {
 
 	// read 2 byte group
 	g := r.read_u16()!
-	ke.group = unsafe { NamedGroup(g) }
+	group := NamedGroup.from_u16(g)!
 
 	// read kxchange length
 	kxlen := r.read_u16()!
 	kxdata := r.read_at_least(int(kxlen))!
-	ke.kxchange = kxdata
 
-	return ke
+	return KeyShareEntry{
+		group:    group
+		kxchange: kxdata
+	}
 }
 
 fn (mut kss []KeyShareEntry) append(ke KeyShareEntry) {

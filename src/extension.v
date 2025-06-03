@@ -168,21 +168,18 @@ fn ExtensionType.unpack(b []u8) !ExtensionType {
 	return ExtensionType.from_u16(val)!
 }
 
+const min_extension_size = 4
+
 struct Extension {
 mut:
-	tipe   ExtensionType
-	length int
-	data   []u8 // <0..2^16-1>
+	tipe   ExtensionType // u16 value
+	length int           // u16
+	data   []u8          // <0..2^16-1>
 }
 
 @[inline]
 fn (e Extension) packed_length() int {
-	mut n := 0
-	n += 2
-	n += 2
-	n += e.data.len
-
-	return n
+	return min_extension_size + e.data.len
 }
 
 @[inline]
@@ -194,13 +191,14 @@ fn (e Extension) pack() ![]u8 {
 		return error('Extension data exceed limit')
 	}
 
-	t := e.tipe.pack()!
-	mut len := []u8{len: u16size}
-	binary.big_endian_put_u16(mut len, u16(e.length))
+	mut len_buf := []u8{len: u16size}
+	binary.big_endian_put_u16(mut len_buf, u16(e.length))
 
 	mut out := []u8{}
-	out << t
-	out << len
+
+	// writes out the data into output buffer
+	out << e.tipe.pack()!
+	out << len_buf
 	out << e.data
 
 	return out
@@ -208,14 +206,14 @@ fn (e Extension) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn Extension.unpack(b []u8) !Extension {
-	if b.len < 4 {
+	if b.len < min_extension_size {
 		return error('Bad Extension bytes')
 	}
 	mut r := buffer.new_reader(b)
 
 	// read ExtensionType
 	t := r.read_u16()!
-	tipe := unsafe { ExtensionType(t) }
+	tipe := ExtensionType.from_u16(t)!
 
 	// read length
 	length := r.read_u16()!

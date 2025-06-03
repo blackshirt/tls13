@@ -84,19 +84,19 @@ fn HandshakeType.from_u8(val u8) !HandshakeType {
 	}
 }
 
-const handshake_header_size = 4
+const min_handshake_msg_size = 4
 
 // Handshake represents Tls 1.3 handshake message.
 //
 struct Handshake {
-	msg_type HandshakeType
-	length   int // max_u24
+	msg_type HandshakeType // u8 value
+	length   int           // max_u24
 	payload  []u8
 }
 
 @[inline]
 fn (h Handshake) packed_length() int {
-	return handshake_header_size + h.payload.len
+	return min_handshake_msg_size + h.payload.len
 }
 
 fn (h Handshake) expect_hsk_type(hsktype HandshakeType) bool {
@@ -133,7 +133,7 @@ fn (h Handshake) pack() ![]u8 {
 	length := u24.from_int(h.length)!
 	bytes_of_length := length.bytes()
 
-	// writes bytes to out
+	// writes bytes into out
 	out << msg_type
 	out << bytes_of_length
 	out << h.payload
@@ -143,7 +143,7 @@ fn (h Handshake) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn Handshake.unpack(b []u8) !Handshake {
-	if b.len < handshake_header_size {
+	if b.len < min_handshake_msg_size {
 		return error('Underflow of Handshake bytes')
 	}
 	mut r := buffer.new_reader(b)
@@ -189,7 +189,7 @@ type HandshakeList = []Handshake
 // unpack_to_multi_handshake add supports to this situation, its unpack bytes array as
 // array of Handshake
 fn unpack_to_multi_handshake(b []u8) ![]Handshake {
-	if b.len < handshake_header_size {
+	if b.len < min_handshake_msg_size {
 		return error('unpack_to_multi_handshakes: Underflow of Handshakes bytes')
 	}
 	mut hs := []Handshake{}
@@ -326,22 +326,26 @@ fn (h HandshakePayload) pack() ![]u8 {
 	}
 }
 
+// Minimal length checked here inculdes minimal of cipher_suites and extensions length
+// Minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
+const min_clienthello_size = 51
+
 struct ClientHello {
 mut:
-	legc_version   ProtocolVersion = ProtocolVersion(0x0303) // TLS v1.2
-	random         []u8          // 32 bytes
-	legc_sessid    []u8          // <0..32>;
-	cipher_suites  []CipherSuite // <2..2^16-2>;
-	legc_comp_meth u8            //<1..2^8-1>;
-	extensions     []Extension   // <8..2^16-1>;
+	lgc_version   ProtocolVersion = tls_v12 // TLS v1.2
+	random        []u8          // 32 bytes
+	lgc_sessid    []u8          // <0..32>;
+	cipher_suites []CipherSuite // <2..2^16-2>;
+	lgc_comp_meth u8            //<1..2^8-1>;
+	extensions    []Extension   // <8..2^16-1>;
 }
 
 fn (ch ClientHello) packed_length() int {
 	mut n := 0
 	n += 2 // ProtocolVersion
 	n += 32 // 32 bytes of random
-	n += 1 // one byte of legc_sessid.len
-	n += ch.legc_sessid.len
+	n += 1 // one byte of lgc_sessid.len
+	n += ch.lgc_sessid.len
 	n += ch.cipher_suites.packed_length()
 	n += 1 // one byte of length compression_method
 	n += 1 // one byte compression_method
@@ -350,8 +354,9 @@ fn (ch ClientHello) packed_length() int {
 	return n
 }
 
+@[inline]
 fn (ch ClientHello) pack() ![]u8 {
-	if ch.legc_sessid.len > 32 {
+	if ch.lgc_sessid.len > 32 {
 		return error('Session id length exceed')
 	}
 	if ch.random.len != 32 {
@@ -359,22 +364,21 @@ fn (ch ClientHello) pack() ![]u8 {
 	}
 	mut out := []u8{}
 
-	out << ch.legc_version.pack()!
+	out << ch.lgc_version.pack()!
 	out << ch.random
-	out << u8(ch.legc_sessid.len)
-	out << ch.legc_sessid
+	out << u8(ch.lgc_sessid.len)
+	out << ch.lgc_sessid
 	out << ch.cipher_suites.pack()!
 	out << u8(0x01)
-	out << ch.legc_comp_meth
+	out << ch.lgc_comp_meth
 	out << ch.extensions.pack()!
 
 	return out
 }
 
+@[direct_array_access; inline]
 fn ClientHello.unpack(b []u8) !ClientHello {
-	// minimal length checked here inculdes minimal of cipher_suites and extensionz length
-	// minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
-	if b.len < 51 {
+	if b.len < min_clienthello_size {
 		return error('Bad ClientHello bytes: underflow ')
 	}
 	mut r := buffer.new_reader(b)
@@ -386,10 +390,10 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	}
 	// random
 	random := r.read_at_least(32)!
-	// legc_sessid
+	// lgc_sessid
 	legn := r.read_byte()!
 	if legn > 32 {
-		return error('legc_sessid exceed')
+		return error('lgc_sessid exceed')
 	}
 	legacy := r.read_at_least(int(legn))!
 
@@ -411,12 +415,12 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	ch := ClientHello{
-		legc_version:   version
-		random:         random
-		legc_sessid:    legacy
-		cipher_suites:  ciphers
-		legc_comp_meth: cmethd
-		extensions:     extensions
+		lgc_version:   version
+		random:        random
+		lgc_sessid:    legacy
+		cipher_suites: ciphers
+		lgc_comp_meth: cmethd
+		extensions:    extensions
 	}
 	return ch
 }
@@ -436,9 +440,9 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	if hmac.equal(last8, tls12_random_magic) || hmac.equal(last8, tls12_random_magic) {
 		return error('Bad downgrade ServerHello.random detected')
 	}
-	// A client which receives a legacy_session_id_echo field that does not match what it sent
+	// A client which receives a lgc_sessid_echo field that does not match what it sent
 	// in the ClientHello MUST abort the handshake with an "illegal_parameter" alert.
-	if !hmac.equal(ch.legc_sessid, sh.legacy_session_id_echo) {
+	if !hmac.equal(ch.lgc_sessid, sh.lgc_sessid_echo) {
 		return error("Server and Client sessid doesn't match")
 	}
 	// If the "supported_versions" extension in the ServerHello contains a version not offered
@@ -455,25 +459,28 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	return true
 }
 
+const min_serverhello_size = 46
+
 // ServerHello
 //
 struct ServerHello {
 mut:
-	legc_version              ProtocolVersion = tls_v12
-	random                    []u8
-	legacy_session_id_echo    []u8 // <0..32>;
-	cipher_suite              CipherSuite
-	legacy_compression_method u8 = 0x00
-	extensions                []Extension // <6..2^16-1>;
+	lgc_version     ProtocolVersion = tls_v12
+	random          []u8
+	lgc_sessid_echo []u8 // <0..32>;
+	cipher_suite    CipherSuite
+	lgc_comp_meth   u8 = 0x00
+	extensions      []Extension // <6..2^16-1>;
 }
 
+@[direct_array_access; inline]
 fn (sh ServerHello) packed_length() int {
 	mut n := 0
 
 	n += 2
 	n += 32
 	n += 1
-	n += sh.legacy_session_id_echo.len
+	n += sh.lgc_sessid_echo.len
 	n += sh.cipher_suite.packed_length()
 	n += 1 // compression_method
 	n += sh.extensions.packed_length()
@@ -481,30 +488,32 @@ fn (sh ServerHello) packed_length() int {
 	return n
 }
 
+@[direct_array_access; inline]
 fn (sh ServerHello) pack() ![]u8 {
 	// we do early simple check of validity.
 	if sh.random.len != 32 {
 		return error('Bad random length')
 	}
-	if sh.legacy_session_id_echo.len > 32 {
-		return error('Bad legacy_session_id_echo length')
+	if sh.lgc_sessid_echo.len > 32 {
+		return error('Bad lgc_sessid_echo length')
 	}
 	mut out := []u8{}
 
-	out << sh.legc_version.pack()!
+	out << sh.lgc_version.pack()!
 	out << sh.random
-	out << u8(sh.legacy_session_id_echo.len)
-	out << sh.legacy_session_id_echo
+	out << u8(sh.lgc_sessid_echo.len)
+	out << sh.lgc_sessid_echo
 	out << sh.cipher_suite.pack()!
-	out << sh.legacy_compression_method
+	out << sh.lgc_comp_meth
 	out << sh.extensions.pack()!
 
 	return out
 }
 
+@[direct_array_access; inline]
 fn ServerHello.unpack(b []u8) !ServerHello {
 	// min = 2 + 32 + 1 + 0 + 2 + 1 + 2 + 6
-	if b.len < 46 {
+	if b.len < min_serverhello_size {
 		return error('Bad ServerHello bytes: underflow')
 	}
 	mut r := buffer.new_reader(b)
@@ -512,13 +521,13 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	ver := r.read_u16()!
 	version := ProtocolVersion.from_u16(ver)!
 	if version != tls_v12 {
-		return error('Bad ProtocolVersion legc_version')
+		return error('Bad ProtocolVersion lgc_version')
 	}
 	random := r.read_at_least(32)!
-	// legacy_session_id_echo
+	// lgc_sessid_echo
 	s := r.read_byte()!
 	if s > 32 {
-		return error('Bad legacy_session_id_echo length')
+		return error('Bad lgc_sessid_echo length')
 	}
 	sessid := r.read_at_least(int(s))!
 	cp := r.read_at_least(2)!
@@ -531,12 +540,12 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	sh := ServerHello{
-		legc_version:              version
-		random:                    random
-		legacy_session_id_echo:    sessid
-		cipher_suite:              cipher
-		legacy_compression_method: comp_meth
-		extensions:                extensions
+		lgc_version:     version
+		random:          random
+		lgc_sessid_echo: sessid
+		cipher_suite:    cipher
+		lgc_comp_meth:   comp_meth
+		extensions:      extensions
 	}
 	return sh
 }
@@ -579,16 +588,26 @@ struct CertificateRequest {
 	extensions []Extension // <2..2^16-1>;
 }
 
+fn (cr CertificateRequest) packed_length() int {
+	mut n := 0
+	n += 1
+	n += cr.crq_ctx.len
+	n += cr.extensions.packed_length()
+
+	return n
+}
+
 fn (cr CertificateRequest) pack() ![]u8 {
-	if cr.crq_ctx.len > int(math.max_u8) {
+	if cr.crq_ctx.len > max_u8 {
 		return error('certreq context len exceed')
 	}
 	mut out := []u8{}
-	exts := cr.extensions.pack()!
+	exts_data := cr.extensions.pack()!
 
+	// writes out CertificateRequest data into output buffer
 	out << u8(cr.crq_ctx.len)
 	out << cr.crq_ctx
-	out << exts
+	out << exts_data
 
 	return out
 }
@@ -646,26 +665,30 @@ fn CertificateType.unpack(b []u8) !CertificateType {
 	return CertificateType.from_u8(b[0])!
 }
 
+const max_certentry_data_size = 1 << 24 - 1
+
 struct CertificateEntry {
-	cert_type  CertificateType
-	cert_data  []u8        //<1..2^24-1>;
-	extensions []Extension //<0..2^16-1>;
+	cert_type  CertificateType // u8
+	cert_data  []u8            //<1..2^24-1>;
+	extensions []Extension     //<0..2^16-1>;
 }
 
 fn (ce CertificateEntry) packed_length() int {
 	mut n := 0
-	n += 3
+	n += 1 // cert_type
+	n += 3 // ce.cert_data.len
 	n += ce.cert_data.len
 	n += ce.extensions.packed_length()
 
 	return n
 }
 
+@[direct_array_access; inline]
 fn (ce CertificateEntry) pack() ![]u8 {
 	match ce.cert_type {
 		.x509, .raw_public_key {
 			// FIXME: is it should handle differently?
-			if ce.cert_data.len > 1 << 24 - 1 {
+			if ce.cert_data.len > max_certentry_data_size {
 				return error('Certificate data exceed')
 			}
 			cert_length := u24.from_int(ce.cert_data.len)!
@@ -685,6 +708,7 @@ fn (ce CertificateEntry) pack() ![]u8 {
 	}
 }
 
+@[direct_array_access; inline]
 fn CertificateEntry.unpack(b []u8) !CertificateEntry {
 	if b.len < 5 {
 		return error('Bad CertificateEntry bytes: underflow')
@@ -783,10 +807,11 @@ fn (c Certificate) packed_length() int {
 	return n
 }
 
+@[direct_array_access; inline]
 fn (c Certificate) pack() ![]u8 {
 	mut out := []u8{}
 
-	if c.cert_req_ctx.len > math.max_u8 {
+	if c.cert_req_ctx.len > max_u8 {
 		return error('Bad cert_req_ctx length: overflow')
 	}
 	out << u8(c.cert_req_ctx.len)
@@ -798,6 +823,7 @@ fn (c Certificate) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn Certificate.unpack(b []u8) !Certificate {
 	if b.len < 4 {
 		return error('Bad Certificate bytes: underflow')
@@ -822,9 +848,11 @@ fn Certificate.unpack(b []u8) !Certificate {
 	return c
 }
 
+const min_certverify_size = 4
+
 struct CertificateVerify {
-	algorithm SignatureScheme
-	signature []u8 // <0..2^16-1>;
+	algorithm SignatureScheme // u16
+	signature []u8            // <0..2^16-1>;
 }
 
 fn (cv CertificateVerify) packed_length() int {
@@ -836,8 +864,9 @@ fn (cv CertificateVerify) packed_length() int {
 	return n
 }
 
+@[direct_array_access; inline]
 fn (cv CertificateVerify) pack() ![]u8 {
-	if cv.signature.len > 1 << 16 - 1 {
+	if cv.signature.len > max_u16 {
 		return error('CertificateVerify.signature exceed')
 	}
 	mut out := []u8{}
@@ -851,8 +880,9 @@ fn (cv CertificateVerify) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn CertificateVerify.unpack(b []u8) !CertificateVerify {
-	if b.len < 4 {
+	if b.len < min_certverify_size {
 		return error('Bad CertificateVerify bytes: underflow')
 	}
 	mut r := buffer.new_reader(b)
@@ -891,6 +921,10 @@ fn Finished.unpack(b []u8) !Finished {
 	return fin
 }
 
+const min_newsessionticket_size = 13
+
+// NewSessionTicket
+//
 //  struct {
 //          uint32 ticket_lifetime;
 //          uint32 ticket_age_add;
@@ -901,8 +935,8 @@ fn Finished.unpack(b []u8) !Finished {
 struct NewSessionTicket {
 	tkt_lifetime u32
 	tkt_ageadd   u32
-	tkt_nonce    []u8
-	ticket       []u8
+	tkt_nonce    []u8 // u8
+	ticket       []u8 // u16
 	extensions   []Extension
 }
 
@@ -918,6 +952,7 @@ fn (st NewSessionTicket) packed_length() int {
 	return n
 }
 
+@[direct_array_access; inline]
 fn (st NewSessionTicket) pack() ![]u8 {
 	mut out := []u8{}
 	mut tkt := []u8{len: 8}
@@ -941,8 +976,9 @@ fn (st NewSessionTicket) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn NewSessionTicket.unpack(b []u8) !NewSessionTicket {
-	if b.len < 13 {
+	if b.len < min_newsessionticket_size {
 		return error('NewSessionTicket bytes underflow')
 	}
 	mut r := buffer.new_reader(b)
