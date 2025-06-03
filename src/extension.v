@@ -1,6 +1,5 @@
 module tls13
 
-import math
 import encoding.binary
 import blackshirt.buffer
 
@@ -72,6 +71,7 @@ enum ExtensionType as u16 {
 	unassigned                            = 0xff
 }
 
+@[inline]
 fn (et ExtensionType) pack() ![]u8 {
 	if et > max_u16 {
 		return error('ExtensionType exceed limit')
@@ -81,6 +81,7 @@ fn (et ExtensionType) pack() ![]u8 {
 	return out
 }
 
+@[inline]
 fn ExtensionType.from_u16(val u16) !ExtensionType {
 	match val {
 		// vfmt off
@@ -155,6 +156,7 @@ fn ExtensionType.from_u16(val u16) !ExtensionType {
 	}
 }
 
+@[direct_array_access; inline]
 fn ExtensionType.unpack(b []u8) !ExtensionType {
 	if b.len != 2 {
 		return error('Bad ExtensionType bytes')
@@ -173,6 +175,7 @@ mut:
 	data   []u8 // <0..2^16-1>
 }
 
+@[inline]
 fn (e Extension) packed_length() int {
 	mut n := 0
 	n += 2
@@ -182,11 +185,12 @@ fn (e Extension) packed_length() int {
 	return n
 }
 
+@[inline]
 fn (e Extension) pack() ![]u8 {
 	if e.length != e.data.len {
 		return error('Mismatched extension length')
 	}
-	if e.data.len > int(math.max_u16) {
+	if e.data.len > max_u16 {
 		return error('Extension data exceed limit')
 	}
 
@@ -202,6 +206,7 @@ fn (e Extension) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn Extension.unpack(b []u8) !Extension {
 	if b.len < 4 {
 		return error('Bad Extension bytes')
@@ -247,7 +252,7 @@ fn (exts []Extension) pack() ![]u8 {
 		o := ex.pack()!
 		ext_list << o
 	}
-	if ext_list.len > int(math.max_u16) {
+	if ext_list.len > max_u16 {
 		return error('Bad Extension list length')
 	}
 	mut len := []u8{len: 2}

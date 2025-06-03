@@ -1,29 +1,39 @@
 module tls13
 
-import math
 import encoding.binary
 import blackshirt.buffer
 
 // NameType = u8
-enum NameType {
+enum NameType as u8 {
 	host_name    = 0x00
 	unknown_name = 0xff
 	// .. (255)
 }
 
+@[inline]
+fn NameType.from_u8(val u8) !NameType {
+	match val {
+		0x00 { return .host_name }
+		0xff { return .unknown_name }
+		else { return error('unsupported NameType value') }
+	}
+}
+
+@[inline]
 fn (n NameType) pack() ![]u8 {
-	if int(n) > int(math.max_u8) {
+	if n > max_u8 {
 		return error('NameType exceed limit')
 	}
 	return [u8(n)]
 }
 
+@[direct_array_access; inline]
 fn NameType.unpack(b []u8) !NameType {
 	if b.len != 1 {
 		return error('bad b.len for NameType')
 	}
 
-	return unsafe { NameType(b[0]) }
+	return NameType.from_u8(b[0])!
 }
 
 // https://datatracker.ietf.org/doc/html/rfc6066#section-3
@@ -35,9 +45,10 @@ fn (h Hostname) str() string {
 	return h.bytestr()
 }
 
+@[direct_array_access; inline]
 fn (h Hostname) pack() ![]u8 {
-	if h.len > math.max_u16 {
-		return error('Hostname.len exceed limit')
+	if h.len <= 0 || h.len > max_u16 {
+		return error('invalid hostname length')
 	}
 	mut out := []u8{}
 	mut bol := []u8{len: 2}
@@ -48,6 +59,7 @@ fn (h Hostname) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn Hostname.unpack(b []u8) !Hostname {
 	mut r := buffer.new_reader(b)
 	// read length
@@ -115,6 +127,7 @@ fn (sn ServerName) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn ServerName.unpack(b []u8) !ServerName {
 	if b.len < 2 {
 		return error('Bad ServerName.unpack bytes')
@@ -187,6 +200,7 @@ fn (snlist ServerNameList) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn ServerNameList.unpack(b []u8) !ServerNameList {
 	if b.len < 3 {
 		return error('ServerNameList.unpack: bad bytes')

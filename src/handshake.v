@@ -11,11 +11,10 @@ const helloretry_magic = [u8(0xCF), 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0x
 	0xE2, 0xC8, 0xA8, 0x33, 0x9C]
 
 const tls12_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x01]
-
 const tls11_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x00]
 
 // HandshakeType = u8
-enum HandshakeType {
+enum HandshakeType as u8 {
 	hello_request        = 0 // _RESERVED
 	client_hello         = 1
 	server_hello         = 2
@@ -38,104 +37,66 @@ enum HandshakeType {
 	message_hash         = 254
 }
 
+@[inline]
 fn (h HandshakeType) pack() ![]u8 {
-	if int(h) > math.max_u8 {
+	if h > max_u8 {
 		return error('HandshakeType exceed limit')
 	}
 	return [u8(h)]
 }
 
+@[direct_array_access; inline]
 fn HandshakeType.unpack(b []u8) !HandshakeType {
 	if b.len != 1 {
 		return error('bad length of HandshakeType bytes')
 	}
-	return unsafe { HandshakeType(b[0]) }
+	return HandshakeType.from_u8(b[0])!
 }
 
-fn HandshakeType.from(b u8) !HandshakeType {
-	match b {
-		0x00 {
-			return HandshakeType.hello_request
-		}
-		0x01 {
-			return HandshakeType.client_hello
-		}
-		0x02 {
-			return HandshakeType.server_hello
-		}
-		0x03 {
-			return HandshakeType.hello_verify_request
-		}
-		0x04 {
-			return HandshakeType.new_session_ticket
-		}
-		0x05 {
-			return HandshakeType.end_of_early_data
-		}
-		0x06 {
-			return HandshakeType.hello_retry_request
-		}
-		0x08 {
-			return HandshakeType.encrypted_extensions
-		}
-		0x0b {
-			return HandshakeType.certificate
-		}
-		0x0c {
-			return HandshakeType.server_key_exchange
-		}
-		0x0d {
-			return HandshakeType.certificate_request
-		}
-		0x0e {
-			return HandshakeType.server_hello_done
-		}
-		0x0f {
-			return HandshakeType.certificate_verify
-		}
-		0x10 {
-			return HandshakeType.client_key_exchange
-		}
-		0x14 {
-			return HandshakeType.finished
-		}
-		0x15 {
-			return HandshakeType.certificate_url
-		}
-		0x16 {
-			return HandshakeType.certificate_status
-		}
-		0x17 {
-			return HandshakeType.supplemental_data
-		}
-		0x18 {
-			return HandshakeType.key_update
-		}
-		0xfe {
-			return HandshakeType.message_hash
-		}
+@[inline]
+fn HandshakeType.from_u8(val u8) !HandshakeType {
+	match val {
+		// vfmt off
+		0x00 { return .hello_request }
+		0x01 { return .client_hello }
+		0x02 { return .server_hello }
+		0x03 { return .hello_verify_request }
+		0x04 { return .new_session_ticket }
+		0x05 { return .end_of_early_data }
+		0x06 { return .hello_retry_request }
+		0x08 { return .encrypted_extensions }
+		0x0b { return .certificate }
+		0x0c { return .server_key_exchange }
+		0x0d { return .certificate_request }
+		0x0e { return .server_hello_done }
+		0x0f { return .certificate_verify }
+		0x10 { return .client_key_exchange }
+		0x14 { return .finished }
+		0x15 { return .certificate_url }
+		0x16 { return .certificate_status }
+		0x17 { return .supplemental_data }
+		0x18 { return .key_update }
+		0xfe { return .message_hash }
 		else {
-			return error('Unsupported value for HandshakeType')
+			return error('unsupported value for HandshakeType')
 		}
+		// vfmt on
 	}
 }
 
 const handshake_header_size = 4
 
 // Handshake represents Tls 1.3 handshake message.
+//
 struct Handshake {
 	msg_type HandshakeType
 	length   int // max_u24
 	payload  []u8
 }
 
+@[inline]
 fn (h Handshake) packed_length() int {
-	mut n := 0
-	n += 1
-	n += 3
-	n += h.payload.len
-
-	return n
+	return handshake_header_size + h.payload.len
 }
 
 fn (h Handshake) expect_hsk_type(hsktype HandshakeType) bool {
@@ -159,6 +120,7 @@ fn (h Handshake) is_hrr() !bool {
 	return false
 }
 
+@[inline]
 fn (h Handshake) pack() ![]u8 {
 	if h.length != h.payload.len {
 		return error('Unmatched Handshake length')
@@ -179,13 +141,14 @@ fn (h Handshake) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn Handshake.unpack(b []u8) !Handshake {
 	if b.len < handshake_header_size {
 		return error('Underflow of Handshake bytes')
 	}
 	mut r := buffer.new_reader(b)
 	tipe := r.read_byte()!
-	msg_type := unsafe { HandshakeType(tipe) }
+	msg_type := HandshakeType.from_u8(tipe)!
 
 	// bytes of length
 	bytes_of_length := r.read_at_least(3)!
@@ -365,20 +328,20 @@ fn (h HandshakePayload) pack() ![]u8 {
 
 struct ClientHello {
 mut:
-	legacy_version             ProtoVersion = ProtoVersion(0x0303) // TLS v1.2
-	random                     []u8          // 32 bytes
-	legacy_session_id          []u8          // <0..32>;
-	cipher_suites              []CipherSuite // <2..2^16-2>;
-	legacy_compression_methods u8            //<1..2^8-1>;
-	extensions                 []Extension   // <8..2^16-1>;
+	legc_version   ProtocolVersion = ProtocolVersion(0x0303) // TLS v1.2
+	random         []u8          // 32 bytes
+	legc_sessid    []u8          // <0..32>;
+	cipher_suites  []CipherSuite // <2..2^16-2>;
+	legc_comp_meth u8            //<1..2^8-1>;
+	extensions     []Extension   // <8..2^16-1>;
 }
 
 fn (ch ClientHello) packed_length() int {
 	mut n := 0
-	n += 2 // ProtoVersion
+	n += 2 // ProtocolVersion
 	n += 32 // 32 bytes of random
-	n += 1 // one byte of legacy_session_id.len
-	n += ch.legacy_session_id.len
+	n += 1 // one byte of legc_sessid.len
+	n += ch.legc_sessid.len
 	n += ch.cipher_suites.packed_length()
 	n += 1 // one byte of length compression_method
 	n += 1 // one byte compression_method
@@ -388,7 +351,7 @@ fn (ch ClientHello) packed_length() int {
 }
 
 fn (ch ClientHello) pack() ![]u8 {
-	if ch.legacy_session_id.len > 32 {
+	if ch.legc_sessid.len > 32 {
 		return error('Session id length exceed')
 	}
 	if ch.random.len != 32 {
@@ -396,13 +359,13 @@ fn (ch ClientHello) pack() ![]u8 {
 	}
 	mut out := []u8{}
 
-	out << ch.legacy_version.pack()!
+	out << ch.legc_version.pack()!
 	out << ch.random
-	out << u8(ch.legacy_session_id.len)
-	out << ch.legacy_session_id
+	out << u8(ch.legc_sessid.len)
+	out << ch.legc_sessid
 	out << ch.cipher_suites.pack()!
 	out << u8(0x01)
-	out << ch.legacy_compression_methods
+	out << ch.legc_comp_meth
 	out << ch.extensions.pack()!
 
 	return out
@@ -417,16 +380,16 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	mut r := buffer.new_reader(b)
 	// version,
 	ver := r.read_u16()!
-	version := unsafe { ProtoVersion(ver) }
+	version := ProtocolVersion.from_u16(ver)!
 	if version != tls_v12 {
 		return error('Bad protocol version: violated')
 	}
 	// random
 	random := r.read_at_least(32)!
-	// legacy_session_id
+	// legc_sessid
 	legn := r.read_byte()!
 	if legn > 32 {
-		return error('legacy_session_id exceed')
+		return error('legc_sessid exceed')
 	}
 	legacy := r.read_at_least(int(legn))!
 
@@ -448,12 +411,12 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	ch := ClientHello{
-		legacy_version:             version
-		random:                     random
-		legacy_session_id:          legacy
-		cipher_suites:              ciphers
-		legacy_compression_methods: cmethd
-		extensions:                 extensions
+		legc_version:   version
+		random:         random
+		legc_sessid:    legacy
+		cipher_suites:  ciphers
+		legc_comp_meth: cmethd
+		extensions:     extensions
 	}
 	return ch
 }
@@ -475,7 +438,7 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	}
 	// A client which receives a legacy_session_id_echo field that does not match what it sent
 	// in the ClientHello MUST abort the handshake with an "illegal_parameter" alert.
-	if !hmac.equal(ch.legacy_session_id, sh.legacy_session_id_echo) {
+	if !hmac.equal(ch.legc_sessid, sh.legacy_session_id_echo) {
 		return error("Server and Client sessid doesn't match")
 	}
 	// If the "supported_versions" extension in the ServerHello contains a version not offered
@@ -496,7 +459,7 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 //
 struct ServerHello {
 mut:
-	legacy_version            ProtoVersion = tls_v12
+	legc_version              ProtocolVersion = tls_v12
 	random                    []u8
 	legacy_session_id_echo    []u8 // <0..32>;
 	cipher_suite              CipherSuite
@@ -528,7 +491,7 @@ fn (sh ServerHello) pack() ![]u8 {
 	}
 	mut out := []u8{}
 
-	out << sh.legacy_version.pack()!
+	out << sh.legc_version.pack()!
 	out << sh.random
 	out << u8(sh.legacy_session_id_echo.len)
 	out << sh.legacy_session_id_echo
@@ -547,9 +510,9 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	mut r := buffer.new_reader(b)
 	// version
 	ver := r.read_u16()!
-	version := unsafe { ProtoVersion(ver) }
+	version := ProtocolVersion.from_u16(ver)!
 	if version != tls_v12 {
-		return error('Bad ProtoVersion legacy_version')
+		return error('Bad ProtocolVersion legc_version')
 	}
 	random := r.read_at_least(32)!
 	// legacy_session_id_echo
@@ -568,7 +531,7 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	sh := ServerHello{
-		legacy_version:            version
+		legc_version:              version
 		random:                    random
 		legacy_session_id_echo:    sessid
 		cipher_suite:              cipher
@@ -649,31 +612,44 @@ fn CertificateRequest.unpack(b []u8) !CertificateRequest {
 }
 
 // CertificateType = u8
-enum CertificateType {
+enum CertificateType as u8 {
 	x509           = 0
 	openpgp        = 1 // reserved
 	raw_public_key = 2
 	unknown        = 255 // unofficial
 }
 
+@[inline]
+fn CertificateType.from_u8(val u8) !CertificateType {
+	match val {
+		0 { return .x509 }
+		1 { return .openpgp }
+		2 { return .raw_public_key }
+		255 { return .unknown }
+		else { return error('unsupported CertificateType value') }
+	}
+}
+
+@[inline]
 fn (ct CertificateType) pack() ![]u8 {
-	if int(ct) > math.max_u8 {
+	if ct > max_u8 {
 		return error('CertificateType exceed')
 	}
 	return [u8(ct)]
 }
 
+@[direct_array_access; inline]
 fn CertificateType.unpack(b []u8) !CertificateType {
 	if b.len != 1 {
 		return error('Bad CertificateType bytes')
 	}
-	return unsafe { CertificateType(b[0]) }
+	return CertificateType.from_u8(b[0])!
 }
 
 struct CertificateEntry {
-	certificate_type CertificateType
-	cert_data        []u8        //<1..2^24-1>;
-	extensions       []Extension //<0..2^16-1>;
+	cert_type  CertificateType
+	cert_data  []u8        //<1..2^24-1>;
+	extensions []Extension //<0..2^16-1>;
 }
 
 fn (ce CertificateEntry) packed_length() int {
@@ -686,7 +662,7 @@ fn (ce CertificateEntry) packed_length() int {
 }
 
 fn (ce CertificateEntry) pack() ![]u8 {
-	match ce.certificate_type {
+	match ce.cert_type {
 		.x509, .raw_public_key {
 			// FIXME: is it should handle differently?
 			if ce.cert_data.len > 1 << 24 - 1 {
@@ -881,7 +857,7 @@ fn CertificateVerify.unpack(b []u8) !CertificateVerify {
 	}
 	mut r := buffer.new_reader(b)
 	alg := r.read_u16()!
-	algorithm := unsafe { SignatureScheme(alg) }
+	algorithm := SignatureScheme.from_u16(alg)!
 
 	// signature
 	slen := r.read_u16()!
@@ -994,38 +970,50 @@ fn NewSessionTicket.unpack(b []u8) !NewSessionTicket {
 
 // KeyUpdate
 // KeyUpdateRequest = u8
-enum KeyUpdateRequest {
+enum KeyUpdateRequest as u8 {
 	update_not_requested = 0
 	update_requested     = 1
 	// 255
 }
 
+@[inline]
+fn KeyUpdateRequest.from_u8(val u8) !KeyUpdateRequest {
+	match val {
+		0 { return .update_not_requested }
+		1 { return .update_requested }
+		else { return error('unsupported KeyUpdateRequest value') }
+	}
+}
+
+@[inline]
 fn (ku KeyUpdateRequest) pack() ![]u8 {
-	if int(ku) > int(math.max_u8) {
+	if ku > max_u8 {
 		return error('KeyUpdateRequest value exceed ')
 	}
 	return [u8(ku)]
 }
 
+@[direct_array_access; inline]
 fn KeyUpdateRequest.unpack(b []u8) !KeyUpdateRequest {
 	if b.len != 1 {
 		return error('bad KeyUpdateRequest')
 	}
-	return unsafe { KeyUpdateRequest(b[0]) }
+	return KeyUpdateRequest.from_u8(b[0])!
 }
 
 struct KeyUpdate {
-	req_update KeyUpdateRequest
+	kupd_req KeyUpdateRequest
 }
 
 fn (ku KeyUpdate) pack() ![]u8 {
-	return ku.req_update.pack()!
+	return ku.kupd_req.pack()!
 }
 
+@[direct_array_access; inline]
 fn KeyUpdate.unpack(b []u8) !KeyUpdate {
 	o := KeyUpdateRequest.unpack(b)!
 	ku := KeyUpdate{
-		req_update: o
+		kupd_req: o
 	}
 	return ku
 }

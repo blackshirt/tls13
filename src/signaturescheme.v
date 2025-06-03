@@ -23,10 +23,12 @@ enum SignatureScheme as u16 {
 	ecdsa_sha1             = 0x0203
 }
 
+@[inline]
 fn (s SignatureScheme) packed_length() int {
 	return u16size
 }
 
+@[inline]
 fn (sig SignatureScheme) pack() ![]u8 {
 	if sig > max_u16 {
 		return error('SignatureScheme exceed limit')
@@ -36,6 +38,7 @@ fn (sig SignatureScheme) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn SignatureScheme.unpack(b []u8) !SignatureScheme {
 	if b.len != 2 {
 		return error('bad SignatureScheme bytes len')
@@ -44,6 +47,7 @@ fn SignatureScheme.unpack(b []u8) !SignatureScheme {
 	return SignatureScheme.from_u16(val)!
 }
 
+@[inline]
 fn SignatureScheme.from_u16(val u16) !SignatureScheme {
 	match val {
 		// vfmt off
@@ -73,10 +77,7 @@ fn SignatureScheme.from_u16(val u16) !SignatureScheme {
 type SignatureSchemeList = []SignatureScheme
 
 fn (sgl SignatureSchemeList) packed_length() int {
-	mut n := 0
-	n += 2
-	n += sgl.len * u16size
-	return n
+	return 2 + sgl.len * u16size
 }
 
 fn (mut sgl SignatureSchemeList) append(sg SignatureScheme) {
@@ -91,7 +92,7 @@ fn (sgl SignatureSchemeList) pack() ![]u8 {
 		return error('SignatureSchemeList length: underflow')
 	}
 	length := sgl.len * u16size
-	if length + 1 > max_u16 {
+	if length > max_u16 {
 		return error("SignatureSchemeList length: overflow'")
 	}
 
@@ -110,6 +111,7 @@ fn (sgl SignatureSchemeList) pack() ![]u8 {
 	return res
 }
 
+@[direct_array_access; inline]
 fn SignatureSchemeList.unpack(b []u8) !SignatureSchemeList {
 	// SignatureSchemeList supported_signature_algorithms<2..2^16-2>;
 	// tells us that its should contain minimal one signature algorithm or more.
@@ -151,10 +153,11 @@ fn (sse SignatureSchemeList) pack_to_extension_bytes() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn SignatureSchemeList.unpack_from_extension_bytes(b []u8) !SignatureSchemeList {
 	ext := Extension.unpack(b)!
 	if ext.tipe != .signature_algorithms {
-		return error('Wong extension type')
+		return error('Wrong non-signature_algorithms extension type')
 	}
 
 	signs := SignatureSchemeList.unpack(ext.data)!

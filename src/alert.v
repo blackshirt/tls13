@@ -9,6 +9,7 @@ enum AlertLevel as u8 {
 	// 255
 }
 
+@[inline]
 fn (a AlertLevel) pack() ![]u8 {
 	if a > max_u8 {
 		return error('AlertLevel value exceed')
@@ -16,6 +17,7 @@ fn (a AlertLevel) pack() ![]u8 {
 	return [u8(a)]
 }
 
+@[direct_array_access; inline]
 fn AlertLevel.unpack(b []u8) !AlertLevel {
 	if b.len != 1 {
 		return error('b.len != 1 for AlertLevel')
@@ -23,6 +25,7 @@ fn AlertLevel.unpack(b []u8) !AlertLevel {
 	return AlertLevel.from_u8(b[0])!
 }
 
+@[inline]
 fn AlertLevel.from_u8(v u8) !AlertLevel {
 	match val {
 		0x01 { return .warning }
@@ -31,6 +34,7 @@ fn AlertLevel.from_u8(v u8) !AlertLevel {
 	}
 }
 
+@[inline]
 fn (al AlertLevel) str() string {
 	match al {
 		.warning { return 'WARNING' }
@@ -75,6 +79,7 @@ enum AlertDescription as u8 {
 	no_application_protocol         = 120
 }
 
+@[inline]
 fn (ad AlertDescription) pack() ![]u8 {
 	if ad > max_u8 {
 		return error('AlertDescription exceed limit')
@@ -82,6 +87,7 @@ fn (ad AlertDescription) pack() ![]u8 {
 	return [u8(ad)]
 }
 
+@[direct_array_access; inline]
 fn AlertDescription.unpack(b []u8) !AlertDescription {
 	if b.len != 1 {
 		return error('b.len != 1 for AlertDescription')
@@ -89,6 +95,7 @@ fn AlertDescription.unpack(b []u8) !AlertDescription {
 	return AlertDescription.from_u8(b[0])!
 }
 
+@[inline]
 fn AlertDescription.from_u8(val u8) !AlertDescription {
 	match val {
 		0 { return .close_notify }
@@ -134,6 +141,7 @@ struct Alert {
 	desc  AlertDescription
 }
 
+@[inline]
 fn (a Alert) pack() ![]u8 {
 	mut res := []u8{}
 	res << a.level.pack()!
@@ -142,6 +150,7 @@ fn (a Alert) pack() ![]u8 {
 	return res
 }
 
+@[direct_array_access; inline]
 fn Alert.unpack(b []u8) !Alert {
 	if b.len != 2 {
 		return error('b.len != 2 for Alert.unpack')
@@ -156,6 +165,7 @@ fn Alert.unpack(b []u8) !Alert {
 }
 
 // new_alert creates new Alert instance
+@[inline]
 pub fn new_alert(level AlertLevel, desc AlertDescription) Alert {
 	alert := Alert{
 		level: level

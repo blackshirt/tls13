@@ -90,24 +90,24 @@ fn (mut rc RecordLayer) encrypt(pxt TLSPlaintext, write_key []u8, write_iv []u8)
 	// build additional_data, ie, TLSCiphertext header
 	add := rc.make_additional_data(ContentType.application_data, tls_v12, length)!
 
-	// do cipher encryption, encrypted_record field of TLSCiphertext is set to result of encryption.
-	// encrypted_record is concatenation of ciphertext plus tag result
+	// do cipher encryption, enc_record field of TLSCiphertext is set to result of encryption.
+	// enc_record is concatenation of ciphertext plus tag result
 	wr_nonce := rc.build_write_nonce(write_iv)
 	ciphertext, tag := rc.cipher.encrypt(write_key, wr_nonce, add, plaintext)!
 
-	mut encrypted_record := []u8{}
-	encrypted_record << ciphertext
-	encrypted_record << tag
+	mut enc_record := []u8{}
+	enc_record << ciphertext
+	enc_record << tag
 
-	// make sure encrypted_record.len matching with calculated length above
-	assert encrypted_record.len == length
+	// make sure enc_record.len matching with calculated length above
+	assert enc_record.len == length
 
 	// finally, build TLSCiphertext structure and return it
 	cxt := TLSCiphertext{
-		opaque_type:      ContentType.application_data
-		legacy_version:   tls_v12
-		length:           length
-		encrypted_record: encrypted_record
+		opaque_type:    ContentType.application_data
+		legacy_version: tls_v12
+		length:         length
+		enc_record:     enc_record
 	}
 
 	// increase RecordLayer write seq number
@@ -121,11 +121,11 @@ fn (mut rc RecordLayer) decrypt(cxt TLSCiphertext, peer_wrkey []u8, iv []u8) !TL
 	aad := rc.make_additional_data(cxt.opaque_type, cxt.legacy_version, cxt.length)!
 	rnonce := rc.build_read_nonce(iv)
 
-	// As a note, TLSCiphertext.encrypted_record field is containing ciphertext output of `.encrypt()`
+	// As a note, TLSCiphertext.enc_record field is containing ciphertext output of `.encrypt()`
 	// operation plus appended with mac parts, so we split it to feed to decryption step.
-	idx := cxt.encrypted_record.len - rc.cipher.tag_size()
-	ciphertext := cxt.encrypted_record[0..idx]
-	mac := cxt.encrypted_record[idx..]
+	idx := cxt.enc_record.len - rc.cipher.tag_size()
+	ciphertext := cxt.enc_record[0..idx]
+	mac := cxt.enc_record[idx..]
 	assert mac.len == rc.cipher.tag_size()
 
 	_, tag := rc.cipher.decrypt(peer_wrkey, rnonce, aad, ciphertext)!

@@ -7,7 +7,6 @@ import time
 import blackshirt.ecdhe
 
 const max_warning_alerts = 5
-
 const max_session_ticket = 1
 
 @[params]

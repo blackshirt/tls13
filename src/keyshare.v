@@ -7,8 +7,8 @@ import blackshirt.ecdhe
 
 struct KeyShareEntry {
 mut:
-	group        NamedGroup = .x25519
-	key_exchange []u8 // <1..2^16-1>
+	group    NamedGroup = .x25519
+	kxchange []u8 // <1..2^16-1>
 }
 
 fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
@@ -19,27 +19,27 @@ fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
 	pubkey := kx.public_key(privkey)!
 
 	ks := KeyShareEntry{
-		group:        g
-		key_exchange: pubkey.bytes()!
+		group:    g
+		kxchange: pubkey.bytes()!
 	}
 	return ks
 }
 
 fn (ks KeyShareEntry) pack() ![]u8 {
-	if ks.key_exchange.len < 1 {
+	if ks.kxchange.len < 1 {
 		return error('KeyShareEntry length: underflow')
 	}
-	if ks.key_exchange.len > math.max_u16 {
+	if ks.kxchange.len > math.max_u16 {
 		return error('KeyShareEntry length: overflow')
 	}
 	group := ks.group.pack()!
 	mut len := []u8{len: u16size}
-	binary.big_endian_put_u16(mut len, u16(ks.key_exchange.len))
+	binary.big_endian_put_u16(mut len, u16(ks.kxchange.len))
 
 	mut out := []u8{}
 	out << group
 	out << len
-	out << ks.key_exchange
+	out << ks.kxchange
 
 	return out
 }
@@ -55,10 +55,10 @@ fn KeyShareEntry.unpack(b []u8) !KeyShareEntry {
 	g := r.read_u16()!
 	ke.group = unsafe { NamedGroup(g) }
 
-	// read key_exchange length
+	// read kxchange length
 	kxlen := r.read_u16()!
 	kxdata := r.read_at_least(int(kxlen))!
-	ke.key_exchange = kxdata
+	ke.kxchange = kxdata
 
 	return ke
 }
@@ -70,7 +70,7 @@ fn (mut kss []KeyShareEntry) append(ke KeyShareEntry) {
 	// If one already exists with this type, replace it
 	for mut item in kss {
 		if item.group == ke.group {
-			item.key_exchange = ke.key_exchange
+			item.kxchange = ke.kxchange
 			continue
 		}
 	}
@@ -178,7 +178,7 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 			for i < length {
 				e := KeyShareEntry.unpack(rem[i..])!
 				entries.append(e)
-				i += 2 + 2 + e.key_exchange.len
+				i += 2 + 2 + e.kxchange.len
 			}
 			ksc := KeyShareExtension{
 				msg_type:      .client_hello

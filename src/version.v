@@ -17,6 +17,7 @@ const tls_v10 = ProtocolVersion(0x0301)
 // vfmt on
 
 // pack serializes ProtocolVersion into bytes array.
+@[inline]
 fn (v ProtocolVersion) pack() ![]u8 {
 	if v > max_u16 {
 		return error('ProtocolVersion exceed limit')
@@ -26,11 +27,13 @@ fn (v ProtocolVersion) pack() ![]u8 {
 	return out
 }
 
+@[inline]
 fn (v ProtocolVersion) packed_length() int {
 	return u16size
 }
 
 // unpack deserializes bytes array into ProtocolVersion
+@[direct_array_access; inline]
 fn ProtocolVersion.unpack(b []u8) !ProtocolVersion {
 	if b.len != u16size {
 		return error('Bad ProtocolVersion buffer len')
@@ -39,6 +42,7 @@ fn ProtocolVersion.unpack(b []u8) !ProtocolVersion {
 	return ProtocolVersion.from_u16(v)!
 }
 
+@[inline]
 fn ProtocolVersion.from_u16(val u16) !ProtocolVersion {
 	if val <= u16(0) || val > max_u16 {
 		return error('Bad values for ProtocolVersion')
@@ -63,6 +67,7 @@ fn (mut pvl []ProtocolVersion) append(v ProtocolVersion) {
 	pvl << v
 }
 
+@[inline]
 fn (pvl []ProtocolVersion) pack() ![]u8 {
 	length := pvl.len * 2
 	if length > max_u8 {
@@ -79,16 +84,14 @@ fn (pvl []ProtocolVersion) pack() ![]u8 {
 	return out
 }
 
+@[inline]
 fn (pvl []ProtocolVersion) packed_length() int {
-	mut n := 0
-	n += 1
-	n += pvl.len * 2
-
-	return n
+	return 1 + 2 * pvl.len
 }
 
 type ProtocolVersionList = []ProtocolVersion
 
+@[direct_array_access; inline]
 fn ProtocolVersionList.unpack(b []u8) !ProtocolVersionList {
 	if b.len < 1 {
 		return error('Bad ProtocolVersionList length')

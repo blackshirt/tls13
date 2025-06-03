@@ -106,8 +106,8 @@ fn test_session_init() ! {
 }
 
 fn test_decrypted_data_from_handshake() {
-	encrypted_record := [u8(233), 85, 239, 170, 3, 176, 70, 17, 90, 239, 247, 248, 245, 63, 222,
-		40, 138, 128, 207, 31, 251, 196, 51]
+	enc_record := [u8(233), 85, 239, 170, 3, 176, 70, 17, 90, 239, 247, 248, 245, 63, 222, 40,
+		138, 128, 207, 31, 251, 196, 51]
 	client_hwkey := [u8(238), 106, 116, 243, 11, 38, 234, 25, 255, 244, 246, 236, 67, 226, 151,
 		139, 138, 236, 51, 254, 245, 119, 202, 186, 55, 204, 254, 223, 163, 149, 42, 244]
 	client_hwiv := [u8(103), 160, 169, 56, 160, 230, 106, 13, 105, 82, 149, 5]
@@ -116,10 +116,10 @@ fn test_decrypted_data_from_handshake() {
 	server_hwiv := [u8(24), 147, 74, 228, 50, 185, 46, 107, 41, 28, 17, 64]
 
 	cxt := TLSCiphertext{
-		opaque_type:      .application_data
-		legacy_version:   tls_v12
-		length:           23
-		encrypted_record: encrypted_record
+		opaque_type:    .application_data
+		legacy_version: tls_v12
+		length:         23
+		enc_record:     enc_record
 	}
 	mut rc := new_record_layer(.tls_chacha20_poly1305_sha256)!
 	snonce := rc.build_read_nonce(server_hwiv)
@@ -130,8 +130,8 @@ fn test_decrypted_data_from_handshake() {
 	mut length := []u8{len: 2}
 	binary.big_endian_put_u16(mut length, u16(cxt.length))
 	add << length
-	cxt_len := cxt.encrypted_record.len
-	ciphertext := cxt.encrypted_record[0..cxt_len - rc.cipher.tag_size()].clone()
+	cxt_len := cxt.enc_record.len
+	ciphertext := cxt.enc_record[0..cxt_len - rc.cipher.tag_size()].clone()
 	plain, tag := rc.cipher.decrypt(server_hwkey, cnonce, add, ciphertext)!
 
 	innertext := TLSInnerPlaintext.unpack(plain)!
@@ -177,19 +177,19 @@ fn test_ee_encrypt_decrypt() {
 	add := rc.make_additional_data(ContentType.application_data, tls_v12, length)!
 	ciphertext, tag := rc.cipher.encrypt(server_hwkey, snonce, add, plaintext)!
 
-	mut encrypted_record := []u8{}
-	encrypted_record << ciphertext
-	encrypted_record << tag
+	mut enc_record := []u8{}
+	enc_record << ciphertext
+	enc_record << tag
 	trec := TLSCiphertext{
-		opaque_type:      .application_data
-		legacy_version:   tls_v12
-		length:           23
-		encrypted_record: encrypted_record
+		opaque_type:    .application_data
+		legacy_version: tls_v12
+		length:         23
+		enc_record:     enc_record
 	}
 
 	txrec := rc.encrypt(pxt, server_hwkey, snonce)!
 	assert trec == txrec
-	cxt := trec.encrypted_record[0..trec.encrypted_record.len - rc.cipher.tag_size()]
+	cxt := trec.enc_record[0..trec.enc_record.len - rc.cipher.tag_size()]
 	assert cxt == ciphertext
 	dcc, mcc := rc.cipher.decrypt(server_hwkey, snonce, add, cxt)!
 	dec_trec := rc.decrypt(trec, server_hwkey, server_hwiv)!

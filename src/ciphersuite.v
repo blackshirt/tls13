@@ -15,10 +15,12 @@ enum CipherSuite as u16 {
 	tls_empty_renegotiation_info_scsv = 0x00ff
 }
 
+@[inline]
 fn (c CipherSuite) packed_length() int {
 	return u16size
 }
 
+@[inline]
 fn (c CipherSuite) pack() ![]u8 {
 	if c > max_u16 {
 		return error('CipherSuite exceed limit')
@@ -28,6 +30,7 @@ fn (c CipherSuite) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn CipherSuite.unpack(b []u8) !CipherSuite {
 	if b.len != u16size {
 		return error('bad ciphersuite data len')
@@ -36,6 +39,8 @@ fn CipherSuite.unpack(b []u8) !CipherSuite {
 	return CipherSuite.from_u16(val)!
 }
 
+// creates CipherSuite from u16 value
+@[inline]
 fn CipherSuite.from_u16(v u16) !CipherSuite {
 	if v > max_u16 {
 		return error('value exceed limit')
@@ -63,11 +68,7 @@ fn (cs []CipherSuite) is_exist(c CipherSuite) bool {
 }
 
 fn (cs []CipherSuite) packed_length() int {
-	mut n := 0
-	n += 2
-	n += cs.len * 2
-
-	return n
+	return 2 + 2 * cs.len
 }
 
 fn (cs []CipherSuite) pack() ![]u8 {

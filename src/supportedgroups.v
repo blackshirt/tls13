@@ -19,10 +19,12 @@ enum NamedGroup as u16 {
 	ffdhe8192 = 0x0104
 }
 
+@[inline]
 fn (ng NamedGroup) packed_length() int {
 	return u16size
 }
 
+@[inline]
 fn (ng NamedGroup) pack() ![]u8 {
 	if ng > max_u16 {
 		return error('NamedGroup exceed limit')
@@ -32,6 +34,7 @@ fn (ng NamedGroup) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn NamedGroup.unpack(b []u8) !NamedGroup {
 	if b.len != u16size {
 		return error('bad NamedGroup data')
@@ -41,6 +44,7 @@ fn NamedGroup.unpack(b []u8) !NamedGroup {
 	return NamedGroup.from_u16(v)!
 }
 
+@[inline]
 fn NamedGroup.from_u16(val u16) !NamedGroup {
 	match val {
 		0x0017 { return .secp256r1 }
