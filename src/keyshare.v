@@ -1,6 +1,5 @@
 module tls13
 
-import math
 import encoding.binary
 import blackshirt.buffer
 import blackshirt.ecdhe
@@ -9,8 +8,8 @@ const min_keyshareentry_size = 4 // 5?
 
 struct KeyShareEntry {
 mut:
-	group    NamedGroup = .x25519
-	kxchange []u8 // <1..2^16-1>
+	group        NamedGroup = .x25519
+	key_exchange []u8 // <1..2^16-1>
 }
 
 fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
@@ -21,28 +20,29 @@ fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
 	pubkey := kx.public_key(privkey)!
 
 	ks := KeyShareEntry{
-		group:    g
-		kxchange: pubkey.bytes()!
+		group:        g
+		key_exchange: pubkey.bytes()!
 	}
 	return ks
 }
 
 @[direct_array_access; inline]
 fn (ks KeyShareEntry) pack() ![]u8 {
-	if ks.kxchange.len < 1 {
+	// key exchange data should have non-null
+	if ks.key_exchange.len < 1 {
 		return error('KeyShareEntry length: underflow')
 	}
-	if ks.kxchange.len > max_u16 {
+	if ks.key_exchange.len > max_u16 {
 		return error('KeyShareEntry length: overflow')
 	}
 	group := ks.group.pack()!
 	mut len := []u8{len: u16size}
-	binary.big_endian_put_u16(mut len, u16(ks.kxchange.len))
+	binary.big_endian_put_u16(mut len, u16(ks.data.len))
 
 	mut out := []u8{}
 	out << group
 	out << len
-	out << ks.kxchange
+	out << ks.key_exchange
 
 	return out
 }
@@ -53,19 +53,18 @@ fn KeyShareEntry.unpack(b []u8) !KeyShareEntry {
 		return error('KeyShareEntry.unpack: underflow')
 	}
 	mut r := buffer.new_reader(b)
-	mut ke := KeyShareEntry{}
 
 	// read 2 byte group
 	g := r.read_u16()!
 	group := NamedGroup.from_u16(g)!
 
-	// read kxchange length
+	// read data length
 	kxlen := r.read_u16()!
 	kxdata := r.read_at_least(int(kxlen))!
 
 	return KeyShareEntry{
-		group:    group
-		kxchange: kxdata
+		group:        group
+		key_exchange: kxdata
 	}
 }
 
@@ -76,7 +75,7 @@ fn (mut kss []KeyShareEntry) append(ke KeyShareEntry) {
 	// If one already exists with this type, replace it
 	for mut item in kss {
 		if item.group == ke.group {
-			item.kxchange = ke.kxchange
+			item.key_exchange = ke.key_exchange
 			continue
 		}
 	}
@@ -84,20 +83,21 @@ fn (mut kss []KeyShareEntry) append(ke KeyShareEntry) {
 	kss << ke
 }
 
+@[direct_array_access]
 fn (kse []KeyShareEntry) pack() ![]u8 {
 	mut payload := []u8{}
 	for k in kse {
 		o := k.pack()!
 		payload << o
 	}
-	if payload.len > int(math.max_u16) {
+	if payload.len > max_u16 {
 		return error('Bad keyshare entry arrays length: overflow')
 	}
-	mut len := []u8{len: u16size}
-	binary.big_endian_put_u16(mut len, u16(payload.len))
+	mut kse_len := []u8{len: u16size}
+	binary.big_endian_put_u16(mut kse_len, u16(payload.len))
 
 	mut out := []u8{}
-	out << len
+	out << kse_len
 	out << payload
 
 	return out
@@ -152,6 +152,7 @@ fn (ks KeyShareExtension) pack_to_extension_bytes() ![]u8 {
 	return out
 }
 
+@[direct_array_access]
 fn KeyShareExtension.unpack(b []u8, msg_type HandshakeType, is_hrr bool) !KeyShareExtension {
 	ext := Extension.unpack(b)!
 	if ext.tipe != .key_share {
@@ -161,6 +162,7 @@ fn KeyShareExtension.unpack(b []u8, msg_type HandshakeType, is_hrr bool) !KeySha
 	return kse
 }
 
+@[direct_array_access]
 fn KeyShareExtension.unpack_from_extension(ext Extension, msg_type HandshakeType, is_hrr bool) !KeyShareExtension {
 	if ext.tipe != .key_share {
 		return error('Wrong extension type')
@@ -184,7 +186,7 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 			for i < length {
 				e := KeyShareEntry.unpack(rem[i..])!
 				entries.append(e)
-				i += 2 + 2 + e.kxchange.len
+				i += 2 + 2 + e.data.len
 			}
 			ksc := KeyShareExtension{
 				msg_type:      .client_hello

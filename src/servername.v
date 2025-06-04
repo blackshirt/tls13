@@ -235,6 +235,7 @@ fn (se ServerNameList) pack_to_extension() !Extension {
 	return ext
 }
 
+@[direct_array_access]
 fn ServerNameList.unpack_from_extension(b []u8) !ServerNameList {
 	ext := Extension.unpack(b)!
 	if ext.tipe != .server_name {

@@ -582,6 +582,7 @@ fn EncryptedExtensions.unpack(b []u8) !EncryptedExtensions {
 	return ee
 }
 
+// B.3.2.  Server Parameters Messages
 // CertificateRequest handling
 struct CertificateRequest {
 	crq_ctx    []u8        // <0..2^8-1>;
@@ -793,6 +794,11 @@ fn CertificateEntryList.unpack(b []u8) !CertificateEntryList {
 	return CertificateEntryList(cel)
 }
 
+const min_certificate_msg_size = 4
+
+// 4.4.2.  Certificate
+// https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.2
+//
 struct Certificate {
 	cert_req_ctx []u8               // <0..2^8-1>;
 	cert_list    []CertificateEntry // <0..2^24-1>;
@@ -814,9 +820,11 @@ fn (c Certificate) pack() ![]u8 {
 	if c.cert_req_ctx.len > max_u8 {
 		return error('Bad cert_req_ctx length: overflow')
 	}
+	// writes certificate request context
 	out << u8(c.cert_req_ctx.len)
 	out << c.cert_req_ctx
 
+	// writes certificates list
 	cert_list := c.cert_list.pack()!
 	out << cert_list
 
@@ -825,7 +833,7 @@ fn (c Certificate) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn Certificate.unpack(b []u8) !Certificate {
-	if b.len < 4 {
+	if b.len < min_certificate_msg_size {
 		return error('Bad Certificate bytes: underflow')
 	}
 	mut r := buffer.new_reader(b)
@@ -841,27 +849,26 @@ fn Certificate.unpack(b []u8) !Certificate {
 	certlist_payload := r.read_at_least(length + 3)!
 	cert_list := CertificateEntryList.unpack(certlist_payload)!
 
-	c := Certificate{
+	cert := Certificate{
 		cert_req_ctx: creq
 		cert_list:    cert_list
 	}
-	return c
+	return cert
 }
 
-const min_certverify_size = 4
+const min_certverify_msg_size = 4
 
+// 4.4.3.  Certificate Verify
+// https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.3
+//
 struct CertificateVerify {
 	algorithm SignatureScheme // u16
 	signature []u8            // <0..2^16-1>;
 }
 
+@[inline]
 fn (cv CertificateVerify) packed_length() int {
-	mut n := 0
-	n += cv.algorithm.packed_length()
-	n += 2
-	n += cv.signature.len
-
-	return n
+	return 4 + cv.signature.len
 }
 
 @[direct_array_access; inline]
@@ -882,7 +889,7 @@ fn (cv CertificateVerify) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn CertificateVerify.unpack(b []u8) !CertificateVerify {
-	if b.len < min_certverify_size {
+	if b.len < min_certverify_msg_size {
 		return error('Bad CertificateVerify bytes: underflow')
 	}
 	mut r := buffer.new_reader(b)

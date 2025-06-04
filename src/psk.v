@@ -5,13 +5,14 @@ import encoding.binary
 import blackshirt.buffer
 
 // TODO: its depend on curve used
-const coordinate_length = 32
+const min_point_coordinate_length = 32
 
 // https://datatracker.ietf.org/doc/html/rfc8446#autoid-101
 struct UncompressedPointRepresentation {
-	legacy_form u8 = 0x04
-	pointx      []u8 // X[coordinate_length]
-	pointy      []u8 // Y[coordinate_length]
+	point_length int = min_point_coordinate_length
+	legacy_form  u8  = 0x04
+	pointx       []u8 // X[coordinate_length]
+	pointy       []u8 // Y[coordinate_length]
 }
 
 fn (up UncompressedPointRepresentation) pack() ![]u8 {
@@ -25,7 +26,7 @@ fn (up UncompressedPointRepresentation) pack() ![]u8 {
 }
 
 fn UncompressedPointRepresentation.unpack(b []u8) !UncompressedPointRepresentation {
-	if b.len < 1 + 2 * coordinate_length {
+	if b.len < 1 + 2 * min_point_coordinate_length {
 		return error('bad UncompressedPointRepresentation bytes')
 	}
 	mut r := buffer.new_reader(b)
@@ -33,8 +34,8 @@ fn UncompressedPointRepresentation.unpack(b []u8) !UncompressedPointRepresentati
 	if legform != u8(0x04) {
 		return error('Bad legacy_form')
 	}
-	pointx := r.read_at_least(coordinate_length)!
-	pointy := r.read_at_least(coordinate_length)!
+	pointx := r.read_at_least(min_point_coordinate_length)!
+	pointy := r.read_at_least(min_point_coordinate_length)!
 
 	up := UncompressedPointRepresentation{
 		legacy_form: legform
@@ -45,14 +46,14 @@ fn UncompressedPointRepresentation.unpack(b []u8) !UncompressedPointRepresentati
 }
 
 // PskKeyExchangeMode = u8
-enum PskKeyExchangeMode {
+enum PskKeyExchangeMode as u8 {
 	psk_ke     = 0
 	psk_dhe_ke = 1
 	//(255)
 }
 
 fn (pxm PskKeyExchangeMode) pack() ![]u8 {
-	if int(pxm) > int(math.max_u8) {
+	if pxm > max_u8 {
 		return error('pxm exceed')
 	}
 	return [u8(pxm)]
@@ -62,14 +63,14 @@ fn PskKeyExchangeMode.unpack(b []u8) !PskKeyExchangeMode {
 	if b.len != 1 {
 		return error('bad PskKeyExchangeMode bytes')
 	}
-	return unsafe { PskKeyExchangeMode(b[0]) }
+	return PskKeyExchangeMode.from_u8(b[0])!
 }
 
-fn PskKeyExchangeMode.from(b u8) !PskKeyExchangeMode {
-	match b {
+fn PskKeyExchangeMode.from_u8(val u8) !PskKeyExchangeMode {
+	match val {
 		0x00 { return .psk_ke }
 		0x01 { return .psk_dhe_ke }
-		else { return error('Unsupported PskKeyExchangeMode value; $(b)') }
+		else { return error('unsupported PskKeyExchangeMode value') }
 	}
 }
 
@@ -141,10 +142,18 @@ struct EarlyDataIndication {
 	max_eadata_size u32
 	empty           Empty
 	// select (Handshake.msg_type) {
-	//  case new_session_ticket:   uint32 max_early_data_size
+	//  case new_session_ticket:  uint32 max_early_data_size
 	// case client_hello:         Empty
 	// case encrypted_extensions: Empty
 	//}
+}
+
+fn (ed EarlyDataIndication) packed_length() int {
+	match ed.msg_type {
+		.new_session_ticket { return 4 }
+		.client_hello, .encrypted_extensions { return 0 }
+		else { return error('invalid msg_type of EarlyDataIndication') }
+	}
 }
 
 fn (ed EarlyDataIndication) pack() ![]u8 {
@@ -163,28 +172,29 @@ fn (ed EarlyDataIndication) pack() ![]u8 {
 	}
 }
 
+// 4.2.11.  Pre-Shared Key Extension
+// https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.11
+//
 struct PskIdentity {
 	identity   []u8 // <1..2^16-1>;
 	obf_tktage u32
 }
 
+@[inline]
 fn (psi PskIdentity) packed_length() int {
-	mut n := 0
-	n += 2
-	n += psi.identity.len
-	n += 4
-	return n
+	return 6 + psi.identity.len
 }
 
+@[inline]
 fn (psi PskIdentity) pack() ![]u8 {
-	if psi.identity.len > math.max_u16 {
+	if psi.identity.len > max_u16 {
 		return error('PskIdentity.identity exceed')
 	}
 	mut out := []u8{}
-	mut id := []u8{len: 2}
-	binary.big_endian_put_u16(mut id, u16(psi.identity.len))
+	mut pid := []u8{len: 2}
+	binary.big_endian_put_u16(mut pid, u16(psi.identity.len))
 
-	out << id
+	out << pid
 	out << psi.identity
 
 	mut obt := []u8{len: 4}
@@ -194,6 +204,7 @@ fn (psi PskIdentity) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn PskIdentity.unpack(b []u8) !PskIdentity {
 	if b.len < 6 {
 		return error('bad PskIdentity bytes')
@@ -210,7 +221,7 @@ fn PskIdentity.unpack(b []u8) !PskIdentity {
 	return psi
 }
 
-type PskIdentityList = []PskIdentity
+type PskIdentityList = []PskIdentity // <7..2^16-1>;
 
 fn (ps []PskIdentity) packed_length() int {
 	mut n := 0
@@ -227,8 +238,8 @@ fn (ps []PskIdentity) pack() ![]u8 {
 	for p in ps {
 		size += p.packed_length()
 	}
-	if size > math.max_u16 {
-		return error('exceed')
+	if size > max_u16 {
+		return error('PskIdentity list exceed')
 	}
 	mut pslen := []u8{len: 2}
 	binary.big_endian_put_u16(mut pslen, u16(size))
@@ -241,6 +252,7 @@ fn (ps []PskIdentity) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn PskIdentityList.unpack(b []u8) !PskIdentityList {
 	if b.len < 2 {
 		return error('bad PskIdentityList bytes')
@@ -300,7 +312,7 @@ fn (pbl []PskBinderEntry) pack() ![]u8 {
 		o := p.pack()!
 		pba << o
 	}
-	if pba.len < 33 || pba.len > math.max_u16 {
+	if pba.len < 33 || pba.len > max_u16 {
 		return error('PskBinderEntry list under or overflow')
 	}
 	mut out := []u8{}
@@ -432,7 +444,7 @@ fn PreSharedKeyExtension.unpack(b []u8, msg_type HandshakeType) !PreSharedKeyExt
 			}
 			val := binary.big_endian_u16(b)
 			psx := PreSharedKeyExtension{
-				msg_type:     msg_type
+				msg_type:     .server_hello
 				sel_identity: val
 			}
 			return psx
