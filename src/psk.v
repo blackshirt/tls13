@@ -207,7 +207,7 @@ fn (psi PskIdentity) pack() ![]u8 {
 @[direct_array_access; inline]
 fn PskIdentity.unpack(b []u8) !PskIdentity {
 	if b.len < 6 {
-		return error('bad PskIdentity bytes')
+		return error('PskIdentity bytes underflow')
 	}
 	mut r := buffer.new_reader(b)
 	idlen := r.read_u16()!
@@ -233,6 +233,7 @@ fn (ps []PskIdentity) packed_length() int {
 	return n
 }
 
+@[direct_array_access; inline]
 fn (ps []PskIdentity) pack() ![]u8 {
 	mut size := 0
 	for p in ps {
@@ -276,6 +277,7 @@ fn (pb PskBinderEntry) packed_length() int {
 	return 1 + pb.len
 }
 
+@[direct_array_access; inline]
 fn (pb PskBinderEntry) pack() ![]u8 {
 	if pb.len < 32 || pb.len > 255 {
 		return error('PskBinderEntry under or overflow')
@@ -287,6 +289,7 @@ fn (pb PskBinderEntry) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn PskBinderEntry.unpack(b []u8) !PskBinderEntry {
 	if b.len < 33 {
 		return error('bad PskBinderEntry bytes')
@@ -297,6 +300,7 @@ fn PskBinderEntry.unpack(b []u8) !PskBinderEntry {
 	return PskBinderEntry(bytes)
 }
 
+@[direct_array_access; inline]
 fn (pbl []PskBinderEntry) packed_length() int {
 	mut n := 0
 	n += 2
@@ -306,6 +310,7 @@ fn (pbl []PskBinderEntry) packed_length() int {
 	return n
 }
 
+@[direct_array_access; inline]
 fn (pbl []PskBinderEntry) pack() ![]u8 {
 	mut pba := []u8{}
 	for p in pbl {
@@ -327,6 +332,7 @@ fn (pbl []PskBinderEntry) pack() ![]u8 {
 
 type PskBinderEntryList = []PskBinderEntry
 
+@[direct_array_access; inline]
 fn PskBinderEntryList.unpack(b []u8) !PskBinderEntryList {
 	if b.len < 33 {
 		return error('bad PskBinderEntryList bytes')
@@ -345,11 +351,19 @@ fn PskBinderEntryList.unpack(b []u8) !PskBinderEntryList {
 	return PskBinderEntryList(pbl)
 }
 
+// OfferedPsks
+//
+// https://datatracker.ietf.org/doc/html/rfc8446#section-4.2.11
+
+// min = 2 + 7 + 2 + 33
+const min_offeredpsks_msg_size = 44
+
 struct OfferedPsks {
 	identities []PskIdentity    // <7..2^16-1>;
 	binders    []PskBinderEntry // <33..2^16-1>;
 }
 
+@[inline]
 fn (ofp OfferedPsks) packed_length() int {
 	mut n := 0
 	n += ofp.identities.packed_length()
@@ -357,6 +371,7 @@ fn (ofp OfferedPsks) packed_length() int {
 	return n
 }
 
+@[direct_array_access; inline]
 fn (ofp OfferedPsks) pack() ![]u8 {
 	mut out := []u8{}
 	out << ofp.identities.pack()!
@@ -364,8 +379,9 @@ fn (ofp OfferedPsks) pack() ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
 fn OfferedPsks.unpack(b []u8) !OfferedPsks {
-	if b.len < 40 {
+	if b.len < min_offeredpsks_msg_size {
 		return error('bad OfferedPsks bytes')
 	}
 	mut r := buffer.new_reader(b)
@@ -385,9 +401,9 @@ fn OfferedPsks.unpack(b []u8) !OfferedPsks {
 }
 
 struct PreSharedKeyExtension {
-	msg_type     HandshakeType = .client_hello
-	off_psks     OfferedPsks
-	sel_identity u16
+	msg_type    HandshakeType = .client_hello
+	off_psks    OfferedPsks
+	selected_id u16
 	// select (Handshake.msg_type) {
 	//  case client_hello: OfferedPsks;
 	//  case server_hello: uint16 selected_identity;
@@ -419,7 +435,7 @@ fn (psx PreSharedKeyExtension) pack() ![]u8 {
 		}
 		.server_hello {
 			mut out := []u8{len: 2}
-			binary.big_endian_put_u16(mut out, psx.sel_identity)
+			binary.big_endian_put_u16(mut out, psx.selected_id)
 			return out
 		}
 		else {
@@ -444,8 +460,8 @@ fn PreSharedKeyExtension.unpack(b []u8, msg_type HandshakeType) !PreSharedKeyExt
 			}
 			val := binary.big_endian_u16(b)
 			psx := PreSharedKeyExtension{
-				msg_type:     .server_hello
-				sel_identity: val
+				msg_type:    .server_hello
+				selected_id: val
 			}
 			return psx
 		}

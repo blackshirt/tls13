@@ -286,6 +286,7 @@ fn (exl []Extension) validate_with_filter(tipe ExtensionType) ![]Extension {
 	return filtered
 }
 
+@[direct_array_access; inline]
 fn ExtensionList.unpack(b []u8) !ExtensionList {
 	if b.len < 2 {
 		return error('Bad ExtensionList bytes')
