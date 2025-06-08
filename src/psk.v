@@ -95,16 +95,7 @@ fn (pxs []PskKeyExchangeMode) pack() ![]u8 {
 	return out
 }
 
-struct PskKeyExchangeModes {
-	ke_modes []PskKeyExchangeMode // <1..255>
-}
-
-fn (pxs PskKeyExchangeModes) pack() ![]u8 {
-	out := pxs.ke_modes.pack()!
-	return out
-}
-
-type PskKeyExchangeModeList = []PskKeyExchangeMode
+type PskKeyExchangeModeList = []PskKeyExchangeMode // <1..255>
 
 fn PskKeyExchangeModeList.unpack(b []u8) !PskKeyExchangeModeList {
 	if b.len < 1 {
@@ -121,14 +112,6 @@ fn PskKeyExchangeModeList.unpack(b []u8) !PskKeyExchangeModeList {
 		i += 1
 	}
 	return PskKeyExchangeModeList(pkms)
-}
-
-fn PskKeyExchangeModes.unpack(b []u8) !PskKeyExchangeModes {
-	ke_modes := PskKeyExchangeModeList.unpack(b)!
-	pkm := PskKeyExchangeModes{
-		ke_modes: ke_modes
-	}
-	return pkm
 }
 
 struct Empty {}
@@ -221,6 +204,9 @@ fn PskIdentity.unpack(b []u8) !PskIdentity {
 	return psi
 }
 
+// Minimal size = 2 (for length) + 7
+const min pskidentitylist_size = 9
+
 type PskIdentityList = []PskIdentity // <7..2^16-1>;
 
 fn (ps []PskIdentity) packed_length() int {
@@ -255,7 +241,7 @@ fn (ps []PskIdentity) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn PskIdentityList.unpack(b []u8) !PskIdentityList {
-	if b.len < 2 {
+	if b.len < pskidentitylist_size {
 		return error('bad PskIdentityList bytes')
 	}
 	mut r := buffer.new_reader(b)
@@ -270,6 +256,8 @@ fn PskIdentityList.unpack(b []u8) !PskIdentityList {
 	}
 	return PskIdentityList(pkl)
 }
+
+const min_pskbinderentry_size = 33 // 1 + 32
 
 type PskBinderEntry = []u8 // <32..255>;
 
@@ -291,14 +279,20 @@ fn (pb PskBinderEntry) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn PskBinderEntry.unpack(b []u8) !PskBinderEntry {
-	if b.len < 33 {
-		return error('bad PskBinderEntry bytes')
+	if b.len < min_pskbinderentry_size {
+		return error('PskBinderEntry bytes underflow')
 	}
 	mut r := buffer.new_reader(b)
 	length := r.read_byte()!
 	bytes := r.read_at_least(int(length))!
 	return PskBinderEntry(bytes)
 }
+
+// PskBinderEntryList are arrays of PskBinderEntry
+//
+const min_pskbinderentrylist_size = 2 + min_pskbinderentry_size
+
+type PskBinderEntryList = []PskBinderEntry // PskBinderEntry binders<33..2^16-1>;
 
 @[direct_array_access; inline]
 fn (pbl []PskBinderEntry) packed_length() int {
@@ -330,11 +324,11 @@ fn (pbl []PskBinderEntry) pack() ![]u8 {
 	return out
 }
 
-type PskBinderEntryList = []PskBinderEntry
+
 
 @[direct_array_access; inline]
 fn PskBinderEntryList.unpack(b []u8) !PskBinderEntryList {
-	if b.len < 33 {
+	if b.len < min_pskbinderentrylist_size {
 		return error('bad PskBinderEntryList bytes')
 	}
 	mut r := buffer.new_reader(b)

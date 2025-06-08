@@ -4,7 +4,8 @@ import encoding.binary
 import blackshirt.buffer
 import blackshirt.ecdhe
 
-const min_keyshareentry_size = 4 // 5?
+// non-nul key_exchange entry
+const min_keyshareentry_size = 5 // 5?
 
 struct KeyShareEntry {
 mut:
