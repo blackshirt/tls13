@@ -2,7 +2,7 @@ module tls13
 
 import arrays
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 // uint16 ProtocolVersion;
 type ProtocolVersion = u16

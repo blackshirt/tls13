@@ -1,8 +1,8 @@
 module tls13
 
 import encoding.binary
-import blackshirt.buffer
-import blackshirt.ecdhe
+import buffer
+import ecdhe
 
 // non-nul key_exchange entry
 const min_keyshareentry_size = 5 // 5?

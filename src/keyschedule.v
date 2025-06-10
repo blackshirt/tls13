@@ -1,7 +1,7 @@
 module tls13
 
 import crypto
-import blackshirt.hkdf
+import hkdf
 
 const empty_hsk_msgs = []Handshake{len: 0}
 const nullbytes = []u8{len: 0, cap: 0}

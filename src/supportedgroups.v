@@ -1,9 +1,8 @@
 module tls13
 
-import math
 import encoding.binary
-import blackshirt.buffer
-import blackshirt.ecdhe
+import buffer
+import ecdhe
 
 // NamedGroup = u16
 enum NamedGroup as u16 {

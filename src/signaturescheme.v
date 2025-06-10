@@ -1,7 +1,7 @@
 module tls13
 
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 // SignatureScheem = u16
 enum SignatureScheme as u16 {

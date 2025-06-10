@@ -1,7 +1,7 @@
 module tls13
 
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 // B.3.1.2.  Cookie Extension
 // https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.3.1.2
@@ -23,7 +23,7 @@ fn (c Cookie) pack() ![]u8 {
 	}
 	mut out := []u8{}
 	mut cookie_len := []u8{len: 2}
-	binay.big_endian_put_u16(mut cookie_len, u16(c.len))
+	binary.big_endian_put_u16(mut cookie_len, u16(c.len))
 
 	out << cookie_len
 	out << c

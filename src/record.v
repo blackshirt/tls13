@@ -3,7 +3,7 @@ module tls13
 import math
 import rand
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 // ContentType is content type of TLS 1.3 record
 // ContentType = u8

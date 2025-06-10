@@ -4,7 +4,7 @@ import log
 import crypto.hmac
 import crypto.rand
 import encoding.binary
-import blackshirt.ecdhe
+import ecdhe
 
 // This file mainly contains routines for doing TLS handshake process.
 

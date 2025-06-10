@@ -2,8 +2,8 @@ module tls13
 
 import crypto
 import encoding.binary
-import blackshirt.buffer
-import blackshirt.aead
+import buffer
+import x.crypto.chacha20poly1305
 
 // CipherSuite = u16
 enum CipherSuite as u16 {
@@ -111,14 +111,21 @@ fn CipherSuiteList.unpack(b []u8) !CipherSuiteList {
 }
 
 // Utility function to simplify other things
-fn new_aead_cipher(c CipherSuite) !&aead.Cipher {
+fn new_aead_cipher(c CipherSuite) !&chacha20poly1305.AEAD {
 	match c {
 		// .tls_aes_128_gcm_sha256 { return new_transcripter(.sha256) }
 		//.tls_aes_256_gcm_sha384 { return new_transcripter(.sha384) }
-		.tls_chacha20_poly1305_sha256 { return aead.new_default_chacha20poly1305_cipher() }
+		.tls_chacha20_poly1305_sha256 {
+			// generates random key and nonce
+			key := rand.read(c.key_length())!
+			nonce := rand.read(chacha20poly1305.nonce_size)!
+			cipher := chacha20poly1305.new(key, nonce)
+		}
 		//.tls_aes_128_ccm_sha256 { return new_transcripter(.sha256) }
 		//.tls_aes_128_ccm_8_sha256 { return new_transcripter(.sha256) }
-		else { return error('unsupported ciphersuite') }
+		else {
+			return error('unsupported ciphersuite')
+		}
 	}
 }
 

@@ -2,7 +2,7 @@ module tls13
 
 import math
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 // TODO: its depend on curve used
 const min_point_coordinate_length = 32
@@ -205,7 +205,7 @@ fn PskIdentity.unpack(b []u8) !PskIdentity {
 }
 
 // Minimal size = 2 (for length) + 7
-const min pskidentitylist_size = 9
+const min_pskidentitylist_size = 9
 
 type PskIdentityList = []PskIdentity // <7..2^16-1>;
 
@@ -241,7 +241,7 @@ fn (ps []PskIdentity) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn PskIdentityList.unpack(b []u8) !PskIdentityList {
-	if b.len < pskidentitylist_size {
+	if b.len < min_pskidentitylist_size {
 		return error('bad PskIdentityList bytes')
 	}
 	mut r := buffer.new_reader(b)
@@ -323,8 +323,6 @@ fn (pbl []PskBinderEntry) pack() ![]u8 {
 
 	return out
 }
-
-
 
 @[direct_array_access; inline]
 fn PskBinderEntryList.unpack(b []u8) !PskBinderEntryList {

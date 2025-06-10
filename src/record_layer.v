@@ -3,9 +3,9 @@ module tls13
 import math
 // import arrays
 import encoding.binary
-import blackshirt.u24
-import blackshirt.aead
-import blackshirt.buffer
+import u24
+import aead
+import buffer
 
 // The record layer fragments information blocks into TLSPlaintext records carrying data
 // in chunks of 2^14 bytes or less.  Message boundaries are handled differently

@@ -1,7 +1,7 @@
 module tls13
 
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 const max_hkdf_label_length = 255
 const max_hkdf_context_length = 255

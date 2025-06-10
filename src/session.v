@@ -4,7 +4,7 @@ import io
 import log
 import net
 import time
-import blackshirt.ecdhe
+import ecdhe
 
 const max_warning_alerts = 5
 const max_session_ticket = 1

@@ -1,7 +1,7 @@
 module tls13
 
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 // NameType = u8
 enum NameType as u8 {

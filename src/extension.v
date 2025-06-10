@@ -1,7 +1,7 @@
 module tls13
 
 import encoding.binary
-import blackshirt.buffer
+import buffer
 
 // ExtensionType = u16
 enum ExtensionType as u16 {
