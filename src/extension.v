@@ -72,7 +72,7 @@ enum ExtensionType as u16 {
 
 @[inline]
 fn (et ExtensionType) pack() ![]u8 {
-	if et > max_u16 {
+	if u16(et) > max_u16 {
 		return error('ExtensionType exceed limit')
 	}
 	mut out := []u8{len: u16size}
@@ -96,7 +96,7 @@ fn ExtensionType.from_u16(val u16) !ExtensionType {
 		9 { return .cert_type }
 		10 { return .supported_groups }
 		11 { return .ec_point_formats }
-		12 { return srp }
+		12 { return .srp }
 		13 { return .signature_algorithms }
 		14 { return .use_srtp }
 		15 { return .heartbeat }
@@ -146,7 +146,7 @@ fn ExtensionType.from_u16(val u16) !ExtensionType {
 		59 { return .dnssec_chain }
 		60 { return .sequence_number_encryption_algorithms }
 		65280 { return .reserved_for_private_use }
-		65281 { return renegotiation_info }
+		65281 { return .renegotiation_info }
 		0xff { return .unassigned }
 		else {
 			return error('unsupported ExtensionType value')

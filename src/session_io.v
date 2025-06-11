@@ -3,7 +3,6 @@ module tls13
 import io
 import log
 import net
-import math
 import encoding.binary
 
 // This file contains routine for IO handling of reading/writing bytes to the wire.

@@ -1,6 +1,7 @@
 module tls13
 
 import crypto
+import crypto.rand
 import encoding.binary
 import x.crypto.chacha20poly1305
 
@@ -21,7 +22,7 @@ fn (c CipherSuite) packed_length() int {
 
 @[inline]
 fn (c CipherSuite) pack() ![]u8 {
-	if c > max_u16 {
+	if u16(c) > max_u16 {
 		return error('CipherSuite exceed limit')
 	}
 	mut out := []u8{len: u16size}
@@ -116,9 +117,10 @@ fn new_aead_cipher(c CipherSuite) !&chacha20poly1305.AEAD {
 		//.tls_aes_256_gcm_sha384 { return new_transcripter(.sha384) }
 		.tls_chacha20_poly1305_sha256 {
 			// generates random key and nonce
-			key := rand.read(c.key_length())!
-			nonce := rand.read(chacha20poly1305.nonce_size)!
-			cipher := chacha20poly1305.new(key, nonce)
+			key := rand.read(c.key_length()!)!
+			// nonce := rand.read(chacha20poly1305.nonce_size)!
+			cipher := chacha20poly1305.new(key, chacha20poly1305.nonce_size)!
+			return cipher
 		}
 		//.tls_aes_128_ccm_sha256 { return new_transcripter(.sha256) }
 		//.tls_aes_128_ccm_8_sha256 { return new_transcripter(.sha256) }

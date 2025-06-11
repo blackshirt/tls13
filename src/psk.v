@@ -1,6 +1,5 @@
 module tls13
 
-import math
 import encoding.binary
 
 // TODO: its depend on curve used
@@ -52,7 +51,7 @@ enum PskKeyExchangeMode as u8 {
 }
 
 fn (pxm PskKeyExchangeMode) pack() ![]u8 {
-	if pxm > max_u8 {
+	if u8(pxm) > max_u8 {
 		return error('pxm exceed')
 	}
 	return [u8(pxm)]
@@ -82,7 +81,7 @@ fn (pxs []PskKeyExchangeMode) packed_length() int {
 }
 
 fn (pxs []PskKeyExchangeMode) pack() ![]u8 {
-	if pxs.len > math.max_u8 {
+	if pxs.len > max_u8 {
 		return error('PskKeyExchangeMode list exceed')
 	}
 	mut out := []u8{}

@@ -36,7 +36,7 @@ enum HandshakeType as u8 {
 
 @[inline]
 fn (h HandshakeType) pack() ![]u8 {
-	if h > max_u8 {
+	if u8(h) > max_u8 {
 		return error('HandshakeType exceed limit')
 	}
 	return [u8(h)]
@@ -195,8 +195,8 @@ fn unpack_to_multi_handshake(b []u8) ![]Handshake {
 	for i < b.len {
 		mut buf := []u8{}
 		tp := r.read_u8()!
-		bytes_length, ln := r.read_sized(3)!
-		assert ln == 3
+		bytes_length := r.read_bytes(3)!
+
 		val := Uint24.from_bytes(bytes_length)!
 		length := int(val)
 		bytes := r.read_at_least(length)!
@@ -649,7 +649,7 @@ fn CertificateType.from_u8(val u8) !CertificateType {
 
 @[inline]
 fn (ct CertificateType) pack() ![]u8 {
-	if ct > max_u8 {
+	if u8(ct) > max_u8 {
 		return error('CertificateType exceed')
 	}
 	return [u8(ct)]
@@ -776,9 +776,9 @@ fn CertificateEntryList.unpack(b []u8) !CertificateEntryList {
 	length := int(val)
 
 	// remaining bytes was smaller then length
-	if r.remainder() < length {
-		return error('Underflow of remaining of CertificateEntryList bytes')
-	}
+	// if r.remainder() < length {
+	//	return error('Underflow of remaining of CertificateEntryList bytes')
+	// }
 	// read payload
 	payload := r.read_at_least(length)!
 	mut i := 0
@@ -839,7 +839,7 @@ fn Certificate.unpack(b []u8) !Certificate {
 	creq := r.read_at_least(int(cr))!
 
 	// peek 3 bytes of length
-	bytes_of_length, _ := r.peek_sized(3)!
+	bytes_of_length := r.peek_bytes(3)!
 	val := Uint24.from_bytes(bytes_of_length)!
 	length := int(val)
 
@@ -1027,7 +1027,7 @@ fn KeyUpdateRequest.from_u8(val u8) !KeyUpdateRequest {
 
 @[inline]
 fn (ku KeyUpdateRequest) pack() ![]u8 {
-	if ku > max_u8 {
+	if u8(ku) > max_u8 {
 		return error('KeyUpdateRequest value exceed ')
 	}
 	return [u8(ku)]

@@ -1,6 +1,5 @@
 module tls13
 
-import math
 import rand
 import encoding.binary
 
@@ -34,7 +33,7 @@ fn ContentType.from_u8(val u8) !ContentType {
 
 @[inline]
 fn (c ContentType) pack() ![]u8 {
-	if c > max_u8 {
+	if u8(c) > max_u8 {
 		return error('ContentType exceed limit')
 	}
 	return [u8(c)]
@@ -63,7 +62,7 @@ fn CcsType.from_u8(val u8) !CcsType {
 
 @[inline]
 fn (c CcsType) pack() ![]u8 {
-	if c > max_u8 {
+	if u8(c) > max_u8 {
 		return error('CcsType exceed')
 	}
 	return [u8(c)]
@@ -244,7 +243,7 @@ fn (mut pl TLSPlaintext) set_version(ver ProtocolVersion) ! {
 // from_handshake creates plain TLSPlaintext from Handshake msg
 fn TLSPlaintext.from_handshake(h Handshake) !TLSPlaintext {
 	payload := h.pack()!
-	if payload.len > math.max_u16 {
+	if payload.len > max_u16 {
 		return error('Handshake payload need to fragment, its exceed')
 	}
 	mut rec := TLSPlaintext{

@@ -55,12 +55,12 @@ pub fn (mut ses Session) do_full_handshake() ! {
 					// use the same random value as it did in the initial ClientHello
 					// TODO: build new CLientHello respons to HelloRetryRequest
 					newch := ClientHello{
-						legacy_version:             tls_v12
-						random:                     ses.firstch.random
-						lgc_sessid:                 ses.firstch.lgc_sessid
-						cipher_suites:              ses.firstch.cipher_suites
-						legacy_compression_methods: ses.firstch.legacy_compression_methods
-						extensions:                 ses.firstch.extensions
+						lgc_version:   tls_v12
+						random:        ses.firstch.random
+						lgc_sessid:    ses.firstch.lgc_sessid
+						cipher_suites: ses.firstch.cipher_suites
+						lgc_comp_meth: ses.firstch.lgc_comp_meth
+						extensions:    ses.firstch.extensions
 					}
 					hsk := HandshakePayload(newch).pack_to_handshake()!
 					_ := ses.send_handshake_msg(hsk)!
@@ -174,7 +174,7 @@ pub fn (mut ses Session) do_post_handshake() ! {
 		}
 		ctn_type := ContentType.from(hdr[0])! // unsafe { ContentType(hdr[0]) }
 		ver := binary.big_endian_u16(hdr[1..2])
-		version := ProtoVersion.from(int(ver))! // unsafe { ProtoVersion(ver) }
+		version := ProtocolVersion.from_u16(ver)! // unsafe { ProtoVersion(ver) }
 		length := binary.big_endian_u16(hdr[3..4])
 
 		// read payload content
@@ -449,12 +449,12 @@ fn (mut ses Session) send_client_hello() ! {
 			// use the same random value as it did in the initial ClientHello
 			// TODO: build new CLientHello respons to HelloRetryRequest
 			newch := ClientHello{
-				legacy_version:             tls_v12
-				random:                     ses.firstch.random
-				lgc_sessid:                 ses.firstch.lgc_sessid
-				cipher_suites:              ses.firstch.cipher_suites
-				legacy_compression_methods: ses.firstch.legacy_compression_methods
-				extensions:                 ses.firstch.extensions
+				lgc_version:   tls_v12
+				random:        ses.firstch.random
+				lgc_sessid:    ses.firstch.lgc_sessid
+				cipher_suites: ses.firstch.cipher_suites
+				lgc_comp_meth: ses.firstch.lgc_comp_meth
+				extensions:    ses.firstch.extensions
 			}
 			hsk := HandshakePayload(newch).pack_to_handshake()!
 			_ := ses.send_handshake_msg(hsk)!
@@ -560,16 +560,16 @@ fn (mut ses Session) parse_server_hello(sh ServerHello) ! {
 		return error('bad state: ${ses.tls_state()}')
 	}
 	// check legacy_version
-	if sh.legacy_version != tls_v12 {
+	if sh.lgc_version != tls_v12 {
 		return error('version not supported')
 	}
 	// compression method, upon receipt of a HelloRetryRequest, the client must check that the
 	// legacy_compression_method is 0
-	if sh.legacy_compression_method != u8(0x00) {
+	if sh.lgc_comp_meth != u8(0x00) {
 		return error('decoding_failed: invalid compression method')
 	}
 	// check ServerHello.legacy_session_id_echo
-	if sh.legacy_session_id_echo.len > 32 || sh.legacy_session_id_echo.len > sh.packed_length() {
+	if sh.lgc_sessid_echo.len > 32 || sh.lgc_sessid_echo.len > sh.packed_length() {
 		return error('decoding_failed: bad lgc_sessid')
 	}
 
@@ -579,7 +579,7 @@ fn (mut ses Session) parse_server_hello(sh ServerHello) ! {
 	// Check again initial or updated ClientHello
 	if ses.tls_state() != .ts_server_hello_2 {
 		// Initial
-		if !hmac.equal(ses.firstch.lgc_sessid, sh.legacy_session_id_echo) {
+		if !hmac.equal(ses.firstch.lgc_sessid, sh.lgc_sessid_echo) {
 			ses.change_tls_state(.ts_closed)
 			return error('Server and Client sessid does not match')
 		}
@@ -587,7 +587,7 @@ fn (mut ses Session) parse_server_hello(sh ServerHello) ! {
 		// updated ClientHello
 		assert ses.ks.hsx.len == 3 && ses.ks.hsx[2].msg_type == .client_hello
 		second_ch := ClientHello.unpack(ses.ks.hsx[2].payload)!
-		if !hmac.equal(second_ch.lgc_sessid, sh.legacy_session_id_echo) {
+		if !hmac.equal(second_ch.lgc_sessid, sh.lgc_sessid_echo) {
 			ses.change_tls_state(.ts_closed)
 			return error('Server and Client sessid does not match')
 		}

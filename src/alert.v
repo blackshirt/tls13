@@ -11,7 +11,7 @@ enum AlertLevel as u8 {
 
 @[inline]
 fn (a AlertLevel) pack() ![]u8 {
-	if a > max_u8 {
+	if u8(a) > max_u8 {
 		return error('AlertLevel value exceed')
 	}
 	return [u8(a)]
@@ -26,7 +26,7 @@ fn AlertLevel.unpack(b []u8) !AlertLevel {
 }
 
 @[inline]
-fn AlertLevel.from_u8(v u8) !AlertLevel {
+fn AlertLevel.from_u8(val u8) !AlertLevel {
 	match val {
 		0x01 { return .warning }
 		0x02 { return .fatal }
@@ -81,7 +81,7 @@ enum AlertDescription as u8 {
 
 @[inline]
 fn (ad AlertDescription) pack() ![]u8 {
-	if ad > max_u8 {
+	if u8(ad) > max_u8 {
 		return error('AlertDescription exceed limit')
 	}
 	return [u8(ad)]

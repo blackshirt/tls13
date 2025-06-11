@@ -37,7 +37,7 @@ fn (ks KeyShareEntry) pack() ![]u8 {
 	}
 	group := ks.group.pack()!
 	mut len := []u8{len: u16size}
-	binary.big_endian_put_u16(mut len, u16(ks.data.len))
+	binary.big_endian_put_u16(mut len, u16(ks.key_exchange.len))
 
 	mut out := []u8{}
 	out << group
@@ -186,7 +186,7 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 			for i < length {
 				e := KeyShareEntry.unpack(rem[i..])!
 				entries.append(e)
-				i += 2 + 2 + e.data.len
+				i += 2 + 2 + e.key_exchange.len
 			}
 			ksc := KeyShareExtension{
 				msg_type:      .client_hello

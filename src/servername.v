@@ -20,7 +20,7 @@ fn NameType.from_u8(val u8) !NameType {
 
 @[inline]
 fn (n NameType) pack() ![]u8 {
-	if n > max_u8 {
+	if u8(n) > max_u8 {
 		return error('NameType exceed limit')
 	}
 	return [u8(n)]
@@ -111,7 +111,7 @@ fn (sn ServerName) pack() ![]u8 {
 
 	match sn.name_type {
 		.host_name {
-			if sn.name.len < 1 || sn.name.len > math.max_u16 {
+			if sn.name.len < 1 || sn.name.len > max_u16 {
 				return error('ServerName.name.len underflow or overflow')
 			}
 			mut hlen := []u8{len: 2}
@@ -185,7 +185,7 @@ fn (snlist ServerNameList) pack() ![]u8 {
 		s := sn.pack()!
 		svn << s
 	}
-	if svn.len > math.max_u16 {
+	if svn.len > max_u16 {
 		return error('ServerNameList length exceed limit')
 	}
 

@@ -1,7 +1,5 @@
 module tls13
 
-import math
-// import arrays
 import encoding.binary
 import x.crypto.chacha20poly1305
 
@@ -102,10 +100,10 @@ fn (mut rc RecordLayer) encrypt(pxt TLSPlaintext, write_key []u8, write_iv []u8)
 
 	// finally, build TLSCiphertext structure and return it
 	cxt := TLSCiphertext{
-		opaque_type:    ContentType.application_data
-		legacy_version: tls_v12
-		length:         length
-		enc_record:     enc_record
+		opaque_type: ContentType.application_data
+		lgc_version: tls_v12
+		length:      length
+		enc_record:  enc_record
 	}
 
 	// increase RecordLayer write seq number
@@ -116,7 +114,7 @@ fn (mut rc RecordLayer) encrypt(pxt TLSPlaintext, write_key []u8, write_iv []u8)
 // decrypt transforms (decrypts) TLSCiphertext to TLSPlaintext, its reverse of encrypt operation
 fn (mut rc RecordLayer) decrypt(cxt TLSCiphertext, peer_wrkey []u8, iv []u8) !TLSPlaintext {
 	// build additional data, read nonce and other stuffs needed for decryption process
-	aad := rc.make_additional_data(cxt.opaque_type, cxt.legacy_version, cxt.length)!
+	aad := rc.make_additional_data(cxt.opaque_type, cxt.lgc_version, cxt.length)!
 	rnonce := rc.build_read_nonce(iv)
 
 	// As a note, TLSCiphertext.enc_record field is containing ciphertext output of `.encrypt()`
@@ -181,7 +179,7 @@ fn (rc RecordLayer) uncoalesced_record(pxt TLSPlaintext) ![]Handshake {
 		// otherwise, we append it and updates number bytes has been read
 		hsk << out
 		// current length : 1 + 3 + length
-		n += r.current_index()
+		n += r.offset()
 	}
 
 	return hsk
@@ -198,10 +196,10 @@ fn (rc RecordLayer) coalesce_hsk(hs []Handshake) !TLSPlaintext {
 	}
 	hsp := hs.pack()!
 	pl := TLSPlaintext{
-		ctn_type:       .handshake
-		legacy_version: tls_v12
-		length:         hsp.len
-		fragment:       hsp
+		ctn_type:    .handshake
+		lgc_version: tls_v12
+		length:      hsp.len
+		fragment:    hsp
 	}
 	return pl
 }
@@ -237,13 +235,13 @@ fn (rc RecordLayer) build_read_nonce(iv []u8) []u8 {
 
 // make_additional_data builds additional data needed for record encryption/decrption
 // additional_data = TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length
-fn (rc RecordLayer) make_additional_data(ctn_type ContentType, ver ProtoVersion, length int) ![]u8 {
+fn (rc RecordLayer) make_additional_data(ctn_type ContentType, ver ProtocolVersion, length int) ![]u8 {
 	mut out := []u8{}
 
 	out << ctn_type.pack()!
 	out << ver.pack()!
 	mut length_bytes := []u8{len: 2}
-	assert length < math.max_u16
+	assert length < max_u16
 	binary.big_endian_put_u16(mut length_bytes, u16(length))
 	out << length_bytes
 
@@ -291,9 +289,9 @@ fn (rc RecordLayer) do_defragment(pls []TLSPlaintext) ![][]u8 {
 		return out
 	}
 	pt := pls[0].ctn_type
-	pv := pls[0].legacy_version
+	pv := pls[0].lgc_version
 	// check
-	s := pls.all(it.ctn_type == pt && it.legacy_version == pv)
+	s := pls.all(it.ctn_type == pt && it.lgc_version == pv)
 	if s {
 		for p in pls {
 			o := p.fragment

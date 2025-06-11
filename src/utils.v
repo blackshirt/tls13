@@ -99,6 +99,10 @@ fn Buffer.new(b []u8, opt BufferOptions) !Buffer {
 	}
 }
 
+fn (b Buffer) offset() i64 {
+	return b.off
+}
+
 // seek_byte seeks one byte from buffer at current offset.
 // When you set update_offset into true, its increases current offset by 1 value
 @[direct_array_access; inline]
