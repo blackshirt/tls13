@@ -6,11 +6,8 @@ import crypto.sha256
 import crypto.sha512
 
 const min_hello_ctx = 2
-
 const ful_hello_ctx = 4
-
 const min_middle_ctx = 6
-
 const min_full_ctx = 7
 
 // its mimics unpubliced of standard cyrpto.hash.Digest
