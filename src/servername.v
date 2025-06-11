@@ -1,7 +1,6 @@
 module tls13
 
 import encoding.binary
-import buffer
 
 // NameType = u8
 enum NameType as u8 {
@@ -61,7 +60,7 @@ fn (h Hostname) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn Hostname.unpack(b []u8) !Hostname {
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// read length
 	length := r.read_u16()!
 	bytes := r.read_at_least(int(length))!
@@ -132,10 +131,10 @@ fn ServerName.unpack(b []u8) !ServerName {
 	if b.len < 2 {
 		return error('Bad ServerName.unpack bytes')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 
-	// read name_type
-	nt := r.read_byte()!
+	// read one byte of name_type
+	nt := r.read_u8()!
 	if nt != u8(NameType.host_name) {
 		return error('unsupported NameType')
 	}
@@ -205,7 +204,7 @@ fn ServerNameList.unpack(b []u8) !ServerNameList {
 	if b.len < 3 {
 		return error('ServerNameList.unpack: bad bytes')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// read ServerNameList length
 	length := r.read_u16()!
 	sn_bytes := r.read_at_least(int(length))!

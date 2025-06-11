@@ -2,8 +2,6 @@ module tls13
 
 import crypto.hmac
 import encoding.binary
-import buffer
-import u24
 
 const helloretry_magic = [u8(0xCF), 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C,
 	0x02, 0x1E, 0x65, 0xB8, 0x91, 0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09,
@@ -124,13 +122,13 @@ fn (h Handshake) pack() ![]u8 {
 	if h.length != h.payload.len {
 		return error('Unmatched Handshake length')
 	}
-	if h.length > u24.max_u24 || h.payload.len > u24.max_u24 {
+	if h.length > max_u24 || h.payload.len > max_u24 {
 		return error('Handshake length exceed limit')
 	}
 	mut out := []u8{}
 	msg_type := h.msg_type.pack()!
-	length := u24.from_int(h.length)!
-	bytes_of_length := length.bytes()
+	length := Uint24.from_int(h.length)!
+	bytes_of_length := length.bytes()!
 
 	// writes bytes into out
 	out << msg_type
@@ -145,14 +143,14 @@ fn Handshake.unpack(b []u8) !Handshake {
 	if b.len < min_handshake_msg_size {
 		return error('Underflow of Handshake bytes')
 	}
-	mut r := buffer.new_reader(b)
-	tipe := r.read_byte()!
+	mut r := Buffer.new(b)!
+	tipe := r.read_u8()!
 	msg_type := HandshakeType.from_u8(tipe)!
 
 	// bytes of length
 	bytes_of_length := r.read_at_least(3)!
-	val := u24.from_bytes(bytes_of_length)!
-	length := val.to_int()!
+	val := Uint24.from_bytes(bytes_of_length)!
+	length := int(val)
 
 	// read Handshake payload
 	payload := r.read_at_least(length)!
@@ -193,14 +191,14 @@ fn unpack_to_multi_handshake(b []u8) ![]Handshake {
 	}
 	mut hs := []Handshake{}
 	mut i := 0
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	for i < b.len {
 		mut buf := []u8{}
-		tp := r.read_byte()!
+		tp := r.read_u8()!
 		bytes_length, ln := r.read_sized(3)!
 		assert ln == 3
-		val := u24.from_bytes(bytes_length)!
-		length := val.to_int()!
+		val := Uint24.from_bytes(bytes_length)!
+		length := int(val)
 		bytes := r.read_at_least(length)!
 
 		buf << tp
@@ -380,7 +378,7 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	if b.len < min_clienthello_size {
 		return error('Bad ClientHello bytes: underflow ')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// version,
 	ver := r.read_u16()!
 	version := ProtocolVersion.from_u16(ver)!
@@ -390,7 +388,7 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	// random
 	random := r.read_at_least(32)!
 	// lgc_sessid
-	legn := r.read_byte()!
+	legn := r.read_u8()!
 	if legn > 32 {
 		return error('lgc_sessid exceed')
 	}
@@ -402,11 +400,11 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	ciphers := CipherSuiteList.unpack(ciphers_data)!
 
 	// read commpression method, should one byte length
-	cm := r.read_byte()!
+	cm := r.read_u8()!
 	if cm != u8(0x01) {
 		return error('Bad compression_method length')
 	}
-	cmethd := r.read_byte()!
+	cmethd := r.read_u8()!
 
 	// read remianing bytes extension list
 	exts_len := r.peek_u16()!
@@ -515,7 +513,7 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	if b.len < min_serverhello_size {
 		return error('Bad ServerHello bytes: underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// version
 	ver := r.read_u16()!
 	version := ProtocolVersion.from_u16(ver)!
@@ -524,14 +522,14 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	}
 	random := r.read_at_least(32)!
 	// lgc_sessid_echo
-	s := r.read_byte()!
+	s := r.read_u8()!
 	if s > 32 {
 		return error('Bad lgc_sessid_echo length')
 	}
 	sessid := r.read_at_least(int(s))!
 	cp := r.read_at_least(2)!
 	cipher := CipherSuite.unpack(cp)!
-	comp_meth := r.read_byte()!
+	comp_meth := r.read_u8()!
 
 	// read remianing bytes extension list
 	exts_ln := r.peek_u16()!
@@ -616,8 +614,8 @@ fn CertificateRequest.unpack(b []u8) !CertificateRequest {
 	if b.len < 3 {
 		return error('bad CertificateRequest bytes')
 	}
-	mut r := buffer.new_reader(b)
-	crctx_len := r.read_byte()!
+	mut r := Buffer.new(b)!
+	crctx_len := r.read_u8()!
 	crctx := r.read_at_least(int(crctx_len))!
 	exts_len := r.peek_u16()!
 	exts_bytes := r.read_at_least(int(exts_len) + 2)!
@@ -665,7 +663,7 @@ fn CertificateType.unpack(b []u8) !CertificateType {
 	return CertificateType.from_u8(b[0])!
 }
 
-const max_certentry_data_size = 1 << 24 - 1
+const max_certentry_data_size = max_u24 // 1 << 24 - 1
 
 struct CertificateEntry {
 	cert_type  CertificateType // u8
@@ -691,8 +689,8 @@ fn (ce CertificateEntry) pack() ![]u8 {
 			if ce.cert_data.len > max_certentry_data_size {
 				return error('Certificate data exceed')
 			}
-			cert_length := u24.from_int(ce.cert_data.len)!
-			cert_bytes_length := cert_length.bytes()
+			cert_length := Uint24.from_int(ce.cert_data.len)!
+			cert_bytes_length := cert_length.bytes()!
 
 			exts := ce.extensions.pack()!
 			mut out := []u8{}
@@ -713,12 +711,12 @@ fn CertificateEntry.unpack(b []u8) !CertificateEntry {
 	if b.len < 5 {
 		return error('Bad CertificateEntry bytes: underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// read 3 bytes length of cert_data
 	bytes_length := r.read_at_least(3)!
-	val := u24.from_bytes(bytes_length)!
-	length := val.to_int()!
-	if length > 1 << 24 - 1 {
+	val := Uint24.from_bytes(bytes_length)!
+	length := int(val)
+	if length > max_certentry_data_size {
 		return error('CertificateEntry.cert_data exceed')
 	}
 	cert_data := r.read_at_least(length)!
@@ -749,12 +747,12 @@ fn (cel []CertificateEntry) pack() ![]u8 {
 	for c in cel {
 		cel_length += c.packed_length()
 	}
-	if cel_length > 1 << 24 - 1 {
+	if cel_length > max_u24 {
 		return error('CertificateEntry list exceed')
 	}
 	mut out := []u8{}
-	celist_length := u24.from_int(cel_length)!
-	celist_bytes := celist_length.bytes()
+	celist_length := Uint24.from_int(cel_length)!
+	celist_bytes := celist_length.bytes()!
 
 	out << celist_bytes
 	for ce in cel {
@@ -770,12 +768,12 @@ fn CertificateEntryList.unpack(b []u8) !CertificateEntryList {
 	if b.len < 3 {
 		return error('CertificateEntryList bytes underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 
 	// read 3 bytes of length
 	bytes_of_length := r.read_at_least(3)!
-	val := u24.from_bytes(bytes_of_length)!
-	length := val.to_int()!
+	val := Uint24.from_bytes(bytes_of_length)!
+	length := int(val)
 
 	// remaining bytes was smaller then length
 	if r.remainder() < length {
@@ -835,15 +833,15 @@ fn Certificate.unpack(b []u8) !Certificate {
 	if b.len < min_certificate_msg_size {
 		return error('Bad Certificate bytes: underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// read cert_req_ctx
-	cr := r.read_byte()!
+	cr := r.read_u8()!
 	creq := r.read_at_least(int(cr))!
 
 	// peek 3 bytes of length
 	bytes_of_length, _ := r.peek_sized(3)!
-	val := u24.from_bytes(bytes_of_length)!
-	length := val.to_int()!
+	val := Uint24.from_bytes(bytes_of_length)!
+	length := int(val)
 
 	certlist_payload := r.read_at_least(length + 3)!
 	cert_list := CertificateEntryList.unpack(certlist_payload)!
@@ -891,7 +889,7 @@ fn CertificateVerify.unpack(b []u8) !CertificateVerify {
 	if b.len < min_certverify_msg_size {
 		return error('Bad CertificateVerify bytes: underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	alg := r.read_u16()!
 	algorithm := SignatureScheme.from_u16(alg)!
 
@@ -987,10 +985,10 @@ fn NewSessionTicket.unpack(b []u8) !NewSessionTicket {
 	if b.len < min_newsessionticket_size {
 		return error('NewSessionTicket bytes underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	lifetime := r.read_u32()!
 	ageadd := r.read_u32()!
-	nonce_len := r.read_byte()!
+	nonce_len := r.read_u8()!
 	tkt_nonce := r.read_at_least(int(nonce_len))!
 	tkt_len := r.read_u16()!
 	ticket := r.read_at_least(int(tkt_len))!

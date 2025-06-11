@@ -1,7 +1,6 @@
 module tls13
 
 import encoding.binary
-import buffer
 
 const max_hkdf_label_length = 255
 const max_hkdf_context_length = 255
@@ -96,7 +95,7 @@ fn (hl HkdfLabel) encode() ![]u8 {
 }
 
 fn HkdfLabel.decode(b []u8) !HkdfLabel {
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// read two bytes length
 	length := r.read_u16()!
 	// one byte label length

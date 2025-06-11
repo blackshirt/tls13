@@ -57,7 +57,7 @@ pub fn (mut ses Session) do_full_handshake() ! {
 					newch := ClientHello{
 						legacy_version:             tls_v12
 						random:                     ses.firstch.random
-						legacy_session_id:          ses.firstch.legacy_session_id
+						lgc_sessid:                 ses.firstch.lgc_sessid
 						cipher_suites:              ses.firstch.cipher_suites
 						legacy_compression_methods: ses.firstch.legacy_compression_methods
 						extensions:                 ses.firstch.extensions
@@ -451,7 +451,7 @@ fn (mut ses Session) send_client_hello() ! {
 			newch := ClientHello{
 				legacy_version:             tls_v12
 				random:                     ses.firstch.random
-				legacy_session_id:          ses.firstch.legacy_session_id
+				lgc_sessid:                 ses.firstch.lgc_sessid
 				cipher_suites:              ses.firstch.cipher_suites
 				legacy_compression_methods: ses.firstch.legacy_compression_methods
 				extensions:                 ses.firstch.extensions
@@ -570,16 +570,16 @@ fn (mut ses Session) parse_server_hello(sh ServerHello) ! {
 	}
 	// check ServerHello.legacy_session_id_echo
 	if sh.legacy_session_id_echo.len > 32 || sh.legacy_session_id_echo.len > sh.packed_length() {
-		return error('decoding_failed: bad legacy_session_id')
+		return error('decoding_failed: bad lgc_sessid')
 	}
 
-	// check for matching legacy_session_id
+	// check for matching lgc_sessid
 	// A client which receives a legacy_session_id_echo field that does not match what
 	// it sent in the ClientHello MUST abort the handshake with an .illegal_parameter alert
 	// Check again initial or updated ClientHello
 	if ses.tls_state() != .ts_server_hello_2 {
 		// Initial
-		if !hmac.equal(ses.firstch.legacy_session_id, sh.legacy_session_id_echo) {
+		if !hmac.equal(ses.firstch.lgc_sessid, sh.legacy_session_id_echo) {
 			ses.change_tls_state(.ts_closed)
 			return error('Server and Client sessid does not match')
 		}
@@ -587,7 +587,7 @@ fn (mut ses Session) parse_server_hello(sh ServerHello) ! {
 		// updated ClientHello
 		assert ses.ks.hsx.len == 3 && ses.ks.hsx[2].msg_type == .client_hello
 		second_ch := ClientHello.unpack(ses.ks.hsx[2].payload)!
-		if !hmac.equal(second_ch.legacy_session_id, sh.legacy_session_id_echo) {
+		if !hmac.equal(second_ch.lgc_sessid, sh.legacy_session_id_echo) {
 			ses.change_tls_state(.ts_closed)
 			return error('Server and Client sessid does not match')
 		}
@@ -775,7 +775,7 @@ fn (mut ses Session) derive_app_traffic_keys() ! {
 
 fn (mut ses Session) parse_key_update(ku KeyUpdate) ! {
 	// Ensure the value of the KeyUpdate.req_update field is valid
-	if ku.req_update != .update_not_requested && ku.req_update != .update_requested {
+	if ku.kupd_req != .update_not_requested && ku.kupd_req != .update_requested {
 		// If an implementation receives any other value, it must terminate the
 		// connection with an illegal_parameter alert
 		return error('ERROR_ILLEGAL_PARAMETER')
@@ -902,10 +902,10 @@ fn (mut ses Session) build_initial_client_hello() !ClientHello {
 	// TODO: add another supported extension
 
 	ch := ClientHello{
-		random:            crandom
-		legacy_session_id: ses.sessid
-		cipher_suites:     ciphersuites
-		extensions:        exts
+		random:        crandom
+		lgc_sessid:    ses.sessid
+		cipher_suites: ciphersuites
+		extensions:    exts
 	}
 	return ch
 }

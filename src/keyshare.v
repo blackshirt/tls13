@@ -1,7 +1,6 @@
 module tls13
 
 import encoding.binary
-import buffer
 import ecdhe
 
 // non-nul key_exchange entry
@@ -53,7 +52,7 @@ fn KeyShareEntry.unpack(b []u8) !KeyShareEntry {
 	if b.len < min_keyshareentry_size {
 		return error('KeyShareEntry.unpack: underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 
 	// read 2 byte group
 	g := r.read_u16()!
@@ -179,7 +178,7 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 			if data.len < 2 {
 				return error('Bad KeyShare for ClientHello bytes: underflow')
 			}
-			mut r := buffer.new_reader(data)
+			mut r := Buffer.new(data)!
 			length := r.read_u16()!
 			rem := r.read_at_least(int(length))!
 			mut entries := []KeyShareEntry{}

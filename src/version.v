@@ -2,7 +2,6 @@ module tls13
 
 import arrays
 import encoding.binary
-import buffer
 
 // uint16 ProtocolVersion;
 type ProtocolVersion = u16
@@ -96,8 +95,8 @@ fn ProtocolVersionList.unpack(b []u8) !ProtocolVersionList {
 	if b.len < 1 {
 		return error('Bad ProtocolVersionList length')
 	}
-	mut r := buffer.new_reader(b)
-	length := r.read_byte()!
+	mut r := Buffer.new(b)!
+	length := r.read_u8()!
 	vers := r.read_at_least(int(length))!
 
 	if vers.len % 2 != 0 {

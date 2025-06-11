@@ -1,7 +1,6 @@
 module tls13
 
 import encoding.binary
-import buffer
 
 // SignatureScheem = u16
 enum SignatureScheme as u16 {
@@ -30,7 +29,7 @@ fn (s SignatureScheme) packed_length() int {
 
 @[inline]
 fn (sig SignatureScheme) pack() ![]u8 {
-	if sig > max_u16 {
+	if u16(sig) > max_u16 {
 		return error('SignatureScheme exceed limit')
 	}
 	mut out := []u8{len: u16size}
@@ -118,7 +117,7 @@ fn SignatureSchemeList.unpack(b []u8) !SignatureSchemeList {
 	if b.len < 4 {
 		return error('negative len or unfullfilled minimal length')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 
 	// read length part
 	n := r.read_u16()!

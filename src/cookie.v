@@ -1,7 +1,6 @@
 module tls13
 
 import encoding.binary
-import buffer
 
 // B.3.1.2.  Cookie Extension
 // https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.3.1.2
@@ -35,7 +34,7 @@ fn Cookie.unpack(b []u8) !Cookie {
 	if b.len < 1 {
 		return error('Cookie bytes underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	// read cookie length
 	ck_len := r.read_u16()!
 	cx_data := r.read_at_least(int(ck_len))!

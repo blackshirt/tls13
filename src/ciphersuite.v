@@ -2,7 +2,6 @@ module tls13
 
 import crypto
 import encoding.binary
-import buffer
 import x.crypto.chacha20poly1305
 
 // CipherSuite = u16
@@ -96,7 +95,7 @@ fn CipherSuiteList.unpack(b []u8) !CipherSuiteList {
 	if b.len < 2 {
 		return error('Bad ciphers length')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	length := r.read_u16()!
 	ciphers_data := r.read_at_least(int(length))!
 

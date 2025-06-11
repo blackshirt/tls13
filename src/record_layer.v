@@ -3,16 +3,14 @@ module tls13
 import math
 // import arrays
 import encoding.binary
-import u24
-import aead
-import buffer
+import x.crypto.chacha20poly1305
 
 // The record layer fragments information blocks into TLSPlaintext records carrying data
 // in chunks of 2^14 bytes or less.  Message boundaries are handled differently
 // depending on the underlying ContentType.
 struct RecordLayer {
 	// underlying AEAD cipher encryption engine to be used
-	cipher &aead.Cipher = unsafe { nil }
+	cipher &chacha20poly1305.AEAD = unsafe { nil }
 mut:
 	// padding mode to be used as padding policy, default to .nopad
 	// see `PaddingMode` for more detail
@@ -72,7 +70,7 @@ fn (mut rc RecordLayer) reset() {
 	rc.set_padding_mode(.nopad)
 }
 
-// encrypt transforms TLSPlaintext to TLSCiphertext structure with provided `aead.Cipher`.
+// encrypt transforms TLSPlaintext to TLSCiphertext structure with provided `x.crypto.chacha20poly1305.AEAD`.
 // Its accepts write_key, where the write_key is either the client_write_key or the server_write_key,
 // and the nonce where it is derived from the sequence number and the client_write_iv or server_write_iv.
 fn (mut rc RecordLayer) encrypt(pxt TLSPlaintext, write_key []u8, write_iv []u8) !TLSCiphertext {
@@ -155,14 +153,14 @@ fn (rc RecordLayer) uncoalesced_record(pxt TLSPlaintext) ![]Handshake {
 	// todo: better handling of this
 	mut n := i64(0)
 	mut hsk := []Handshake{}
-	mut r := buffer.new_reader(payload)
+	mut r := Buffer.new(payload)!
 	for n < payload.len {
-		tipe := r.read_byte()!
+		tipe := r.read_u8()!
 		msg_type := HandshakeType.from(tipe)!
 		// bytes of length
 		bytes_of_length := r.read_at_least(3)!
-		val := u24.from_bytes(bytes_of_length)!
-		length := val.to_int()!
+		val := Uint24.from_bytes(bytes_of_length)!
+		length := int(val)
 
 		// read current item Handshake payload
 		cur_content := r.read_at_least(length)!

@@ -2,7 +2,6 @@ module tls13
 
 import math
 import encoding.binary
-import buffer
 
 // TODO: its depend on curve used
 const min_point_coordinate_length = 32
@@ -29,8 +28,8 @@ fn UncompressedPointRepresentation.unpack(b []u8) !UncompressedPointRepresentati
 	if b.len < 1 + 2 * min_point_coordinate_length {
 		return error('bad UncompressedPointRepresentation bytes')
 	}
-	mut r := buffer.new_reader(b)
-	legform := r.read_byte()!
+	mut r := Buffer.new(b)!
+	legform := r.read_u8()!
 	if legform != u8(0x04) {
 		return error('Bad legacy_form')
 	}
@@ -101,8 +100,8 @@ fn PskKeyExchangeModeList.unpack(b []u8) !PskKeyExchangeModeList {
 	if b.len < 1 {
 		return error('Bad PskKeyExchangeModeList bytes')
 	}
-	mut r := buffer.new_reader(b)
-	length := r.read_byte()!
+	mut r := Buffer.new(b)!
+	length := r.read_u8()!
 	bytes := r.read_at_least(int(length))!
 	mut i := 0
 	mut pkms := []PskKeyExchangeMode{}
@@ -192,7 +191,7 @@ fn PskIdentity.unpack(b []u8) !PskIdentity {
 	if b.len < 6 {
 		return error('PskIdentity bytes underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	idlen := r.read_u16()!
 	idb := r.read_at_least(int(idlen))!
 	obf := r.read_u32()!
@@ -244,7 +243,7 @@ fn PskIdentityList.unpack(b []u8) !PskIdentityList {
 	if b.len < min_pskidentitylist_size {
 		return error('bad PskIdentityList bytes')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	length := r.read_u16()!
 	bytes := r.read_at_least(int(length))!
 	mut pkl := []PskIdentity{}
@@ -282,8 +281,8 @@ fn PskBinderEntry.unpack(b []u8) !PskBinderEntry {
 	if b.len < min_pskbinderentry_size {
 		return error('PskBinderEntry bytes underflow')
 	}
-	mut r := buffer.new_reader(b)
-	length := r.read_byte()!
+	mut r := Buffer.new(b)!
+	length := r.read_u8()!
 	bytes := r.read_at_least(int(length))!
 	return PskBinderEntry(bytes)
 }
@@ -329,7 +328,7 @@ fn PskBinderEntryList.unpack(b []u8) !PskBinderEntryList {
 	if b.len < min_pskbinderentrylist_size {
 		return error('bad PskBinderEntryList bytes')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	length := r.read_u16()!
 	bytes := r.read_at_least(int(length))!
 
@@ -376,7 +375,7 @@ fn OfferedPsks.unpack(b []u8) !OfferedPsks {
 	if b.len < min_offeredpsks_msg_size {
 		return error('bad OfferedPsks bytes')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	idn_len := r.peek_u16()!
 	idn_bytes := r.read_at_least(int(idn_len) + 2)!
 	idn := PskIdentityList.unpack(idn_bytes)!

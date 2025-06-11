@@ -30,7 +30,7 @@ pub fn (mut ses Session) read_tls_record() !TLSRecord {
 	// we don't interpretes content type, just do read as is
 	ctn_type := ContentType.from(hdr[0])! // unsafe { ContentType(hdr[0]) }
 	ver := binary.big_endian_u16(hdr[1..2])
-	version := ProtoVersion.from(int(ver))! // unsafe { ProtoVersion(ver) }
+	version := ProtocolVersion.from_u16(ver)! // unsafe { ProtocolVersion(ver) }
 	length := binary.big_endian_u16(hdr[3..4])
 
 	// read payload content
@@ -206,7 +206,7 @@ pub fn (mut ses Session) write_alert(a Alert) !int {
 		return error('write on .closed state')
 	}
 	ap := TLSPlaintext.from_alert(a)!
-	assert ap.length < math.max_u16
+	assert ap.length < max_u16
 
 	if ses.hsk_secured {
 		// do encryption of alert record
@@ -264,10 +264,10 @@ pub fn (mut ses Session) write_application_data(data []u8) !int {
 	}
 
 	pxt := TLSPlaintext{
-		ctn_type:       .application_data
-		legacy_version: tls_v12
-		length:         data.len
-		fragment:       data
+		ctn_type:    .application_data
+		lgc_version: tls_v12
+		length:      data.len
+		fragment:    data
 	}
 	cxt := ses.reclayer.encrypt(pxt, ses.ks.cln_app_wrkey, ses.ks.cln_app_wriv)!
 	return ses.write_ciphertext(cxt)!

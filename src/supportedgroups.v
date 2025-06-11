@@ -1,7 +1,6 @@
 module tls13
 
 import encoding.binary
-import buffer
 import ecdhe
 
 // NamedGroup = u16
@@ -25,7 +24,7 @@ fn (ng NamedGroup) packed_length() int {
 
 @[inline]
 fn (ng NamedGroup) pack() ![]u8 {
-	if ng > max_u16 {
+	if u16(ng) > max_u16 {
 		return error('NamedGroup exceed limit')
 	}
 	mut out := []u8{len: u16size}
@@ -108,14 +107,11 @@ fn NamedGroupList.unpack(b []u8) !NamedGroupList {
 	if b.len < 4 {
 		return error('Bad NamedGroupList: underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 
 	// read length part
 	len := r.read_u16()!
-	if r.remainder() < int(len) {
-		return error('remainder small than length')
-	}
-	bytes := r.read_at_least(len)!
+	bytes := r.read_at_least(int(len))!
 
 	// read []NamedGroup contents
 	mut ngl := NamedGroupList([]NamedGroup{})

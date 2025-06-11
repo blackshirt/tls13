@@ -3,7 +3,6 @@ module tls13
 import math
 import rand
 import encoding.binary
-import buffer
 
 // ContentType is content type of TLS 1.3 record
 // ContentType = u8
@@ -159,8 +158,8 @@ fn TLSRecord.unpack(b []u8) !TLSRecord {
 	if b.len < min_tls13_record_length {
 		return error('tls record underflow')
 	}
-	mut r := buffer.new_reader(b)
-	t := r.read_byte()!
+	mut r := Buffer.new(b)!
+	t := r.read_u8()!
 	ctn_type := ContentType.from_u8(t)!
 	v := r.read_u16()!
 	version := ProtocolVersion.from_u16(v)!
@@ -339,7 +338,7 @@ fn TLSPlaintext.unpack(b []u8) !TLSPlaintext {
 	if b.len < 5 {
 		return error('TLSPlaintext bytes: underflow')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	ctn := r.read_u8()!
 	ctn_type := ContentType.from_u8(ctn)!
 	ver := r.read_u16()!
@@ -512,8 +511,8 @@ fn TLSCiphertext.unpack(b []u8) !TLSCiphertext {
 	if b.len < 5 {
 		return error('Bad TLSCiphertext bytes: underflow')
 	}
-	mut r := buffer.new_reader(b)
-	opq := r.read_byte()!
+	mut r := Buffer.new(b)!
+	opq := r.read_u8()!
 	opaque_type := ContentType.from_u8(opq)!
 	if opaque_type != .application_data {
 		return error('Bad TLSCiphertext ContentType')

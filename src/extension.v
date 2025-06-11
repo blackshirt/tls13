@@ -1,7 +1,6 @@
 module tls13
 
 import encoding.binary
-import buffer
 
 // ExtensionType = u16
 enum ExtensionType as u16 {
@@ -209,7 +208,7 @@ fn Extension.unpack(b []u8) !Extension {
 	if b.len < min_extension_size {
 		return error('Bad Extension bytes')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 
 	// read ExtensionType
 	t := r.read_u16()!
@@ -291,7 +290,7 @@ fn ExtensionList.unpack(b []u8) !ExtensionList {
 	if b.len < 2 {
 		return error('Bad ExtensionList bytes')
 	}
-	mut r := buffer.new_reader(b)
+	mut r := Buffer.new(b)!
 	length := r.read_u16()!
 	exts_bytes := r.read_at_least(int(length))!
 	mut i := 0
