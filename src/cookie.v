@@ -53,6 +53,7 @@ fn cookie_parse(b []u8) !Cookie {
 	return new_cookie(cx_data)!
 }
 
+// new_cookie creates cookies extension from bytes array.
 @[direct_array_access; inline]
 fn new_cookie(bytes []u8) !Cookie {
 	if bytes < min_cookie_size || btyes.len > max_cookie_size {

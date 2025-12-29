@@ -39,11 +39,11 @@ fn ngroup_parse(b []u8) !NamedGroup {
 	}
 
 	v := binary.big_endian_u16(b)
-	return ngroup_from_u16(v)!
+	return new_group(v)!
 }
 
 @[inline]
-fn ngroup_from_u16(val u16) !NamedGroup {
+fn new_group(val u16) !NamedGroup {
 	match val {
 		0x0017 { return .secp256r1 }
 		0x0018 { return .secp384r1 }

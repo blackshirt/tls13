@@ -86,25 +86,25 @@ fn tlsversion_from_u16(val u16) !TlsVersion {
 type TlsVersionList = []TlsVersion
 
 // packlen returns the length of serialized array of version
-fn (vls []TlsVersion) packlen() int {
-	return 1 + 2 * vls.len
+fn (tv []TlsVersion) packlen() int {
+	return 1 + 2 * tv.len
 }
 
-// append adds version v into array of TLS version vls.
+// append adds version v into array of TLS version tv.
 @[direct_array_access]
-fn (mut vls []TlsVersion) append(v TlsVersion) {
+fn (mut tv []TlsVersion) append(v TlsVersion) {
 	// if v is already on the list, do nothing
-	if v in vls {
+	if v in tv {
 		return
 	}
-	vls << v
+	tv << v
 }
 
 // pack encodes array of TLS version into bytes array.
 @[inline]
-fn (vls []TlsVersion) pack() ![]u8 {
+fn (tv []TlsVersion) pack() ![]u8 {
 	// the length of this version array should not exceed 255-item
-	length := vls.len * 2
+	length := tv.len * 2
 	if length > max_tlversionlist_size {
 		return error('bad []TlsVersion length')
 	}
@@ -114,7 +114,7 @@ fn (vls []TlsVersion) pack() ![]u8 {
 	// serializes the length of the array
 	out << u8(length)
 	// serializes every version item
-	for v in vls {
+	for v in tv {
 		out << v.pack()!
 	}
 
@@ -156,8 +156,8 @@ fn tlsverlist_from_bytes(bytes []u8) ![]TlsVersion {
 
 // sort does sorting of TlsVersion arrays in descending order, from biggest to the lowest version.
 @[direct_array_access]
-fn (mut vls []TlsVersion) sort() []TlsVersion {
-	vls.sort_with_compare(fn (v1 &TlsVersion, v2 &TlsVersion) int {
+fn (mut tv []TlsVersion) sort() []TlsVersion {
+	tv.sort_with_compare(fn (v1 &TlsVersion, v2 &TlsVersion) int {
 		if v1 < v2 {
 			return 1
 		}
@@ -166,15 +166,15 @@ fn (mut vls []TlsVersion) sort() []TlsVersion {
 		}
 		return 0
 	})
-	return vls
+	return tv
 }
 
-// choose_supported_version chooses TLS 1.3 version from arrays of version in vls
+// choose_supported_version chooses TLS 1.3 version from arrays of version in tv
 @[direct_array_access]
-fn choose_supported_version(vls []TlsVersion) !TlsVersion {
+fn choose_supported_version(tv []TlsVersion) !TlsVersion {
 	// choose the max version available in list
 	// RFC mandates its in sorted form.
-	max_ver := arrays.max(vls)!
+	max_ver := arrays.max(tv)!
 	// we currently only support v1.3
 	if max_ver != tls_v13 {
 		return error('nothing version in list was supported')
