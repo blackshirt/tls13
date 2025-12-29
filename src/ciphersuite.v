@@ -1,3 +1,8 @@
+// Copyright © 2025 blackshirt.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
+// TLS 1.3 Ciphersuite 
 module tls13
 
 import crypto
@@ -16,8 +21,8 @@ enum CipherSuite as u16 {
 }
 
 @[inline]
-fn (c CipherSuite) packed_length() int {
-	return u16size
+fn (c CipherSuite) packlen() int {
+	return 2
 }
 
 @[inline]
@@ -25,23 +30,23 @@ fn (c CipherSuite) pack() ![]u8 {
 	if u16(c) > max_u16 {
 		return error('CipherSuite exceed limit')
 	}
-	mut out := []u8{len: u16size}
+	mut out := []u8{len: 2}
 	binary.big_endian_put_u16(mut out, u16(c))
 	return out
 }
 
 @[direct_array_access; inline]
-fn CipherSuite.unpack(b []u8) !CipherSuite {
-	if b.len != u16size {
+fn csuite_parse(b []u8) !CipherSuite {
+	if b.len != 2 {
 		return error('bad ciphersuite data len')
 	}
 	val := binary.big_endian_u16(b)
-	return CipherSuite.from_u16(val)!
+	return csuite_from_u16(val)!
 }
 
-// creates CipherSuite from u16 value
+// csuite_from_u16 creates CipherSuite from u16 value
 @[inline]
-fn CipherSuite.from_u16(v u16) !CipherSuite {
+fn csuite_from_u16(v u16) !CipherSuite {
 	if v > max_u16 {
 		return error('value exceed limit')
 	}
@@ -67,7 +72,7 @@ fn (cs []CipherSuite) is_exist(c CipherSuite) bool {
 	return c in cs
 }
 
-fn (cs []CipherSuite) packed_length() int {
+fn (cs []CipherSuite) packlen() int {
 	return 2 + 2 * cs.len
 }
 
@@ -103,7 +108,7 @@ fn CipherSuiteList.unpack(b []u8) !CipherSuiteList {
 	mut i := 0
 	mut cs := []CipherSuite{}
 	for i < ciphers_data.len {
-		c := CipherSuite.unpack(ciphers_data[i..i + u16size])!
+		c := csuite_parseciphers_data[i..i + 2])!
 		cs.append(c)
 		i += 2
 	}

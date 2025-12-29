@@ -3,7 +3,7 @@ module tls13
 import encoding.binary
 import ecdhe
 
-// NamedGroup = u16
+// TLS 1.3 NamedGroup
 enum NamedGroup as u16 {
 	secp256r1 = 0x0017
 	secp384r1 = 0x0018
@@ -18,32 +18,32 @@ enum NamedGroup as u16 {
 }
 
 @[inline]
-fn (ng NamedGroup) packed_length() int {
-	return u16size
+fn (g NamedGroup) packlen() int {
+	return 2
 }
 
 @[inline]
-fn (ng NamedGroup) pack() ![]u8 {
-	if u16(ng) > max_u16 {
+fn (g NamedGroup) pack() ![]u8 {
+	if u16(g) > max_u16 {
 		return error('NamedGroup exceed limit')
 	}
-	mut out := []u8{len: u16size}
-	binary.big_endian_put_u16(mut out, u16(ng))
+	mut out := []u8{len: 2}
+	binary.big_endian_put_u16(mut out, u16(g))
 	return out
 }
 
 @[direct_array_access; inline]
-fn NamedGroup.unpack(b []u8) !NamedGroup {
-	if b.len != u16size {
+fn ngroup_parse(b []u8) !NamedGroup {
+	if b.len != 2 {
 		return error('bad NamedGroup data')
 	}
 
 	v := binary.big_endian_u16(b)
-	return NamedGroup.from_u16(v)!
+	return ngroup_from_u16(v)!
 }
 
 @[inline]
-fn NamedGroup.from_u16(val u16) !NamedGroup {
+fn ngroup_from_u16(val u16) !NamedGroup {
 	match val {
 		0x0017 { return .secp256r1 }
 		0x0018 { return .secp384r1 }
@@ -63,8 +63,8 @@ fn NamedGroup.from_u16(val u16) !NamedGroup {
 type NamedGroupList = []NamedGroup
 
 // constant of namedgroup list size, in bytes
-const min_namedgroup_list = 2
-const max_namedgroup_list = max_u16
+const min_nglist_size = 2
+const max_nglist_size = max_u16
 
 fn (mut gl NamedGroupList) append(g NamedGroup) {
 	if g in gl {
@@ -73,7 +73,7 @@ fn (mut gl NamedGroupList) append(g NamedGroup) {
 	gl << g
 }
 
-fn (gl NamedGroupList) packed_length() int {
+fn (gl NamedGroupList) packlen() int {
 	mut n := 0
 	n += 2
 	n += gl.len * 2 // length of NamedGroupList contents in bytes
@@ -85,13 +85,13 @@ fn (gl NamedGroupList) pack() ![]u8 {
 	if gl.len < 1 {
 		return error('Bad NamedGroupList length: underflow')
 	}
-	length := gl.len * u16size
-	if length > max_namedgroup_list {
+	length := gl.len * 2
+	if length > max_nglist_size {
 		return error('Bad NamedGroupList length: overflow')
 	}
 	mut out := []u8{}
 
-	mut bol := []u8{len: u16size}
+	mut bol := []u8{len: 2}
 	binary.big_endian_put_u16(mut bol, u16(length))
 	out << bol
 
@@ -117,10 +117,10 @@ fn NamedGroupList.unpack(b []u8) !NamedGroupList {
 	mut ngl := NamedGroupList([]NamedGroup{})
 	mut i := 0
 	for i < bytes.len {
-		buf := bytes[i..i + u16size]
-		ng := NamedGroup.unpack(buf)!
-		ngl.append(ng)
-		i += u16size
+		buf := bytes[i..i + 2]
+		g := ngroup_parse(buf)!
+		ngl.append(g)
+		i += 2
 	}
 	return ngl
 }

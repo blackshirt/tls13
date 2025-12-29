@@ -15,6 +15,7 @@ const tls13_label_prefix = 'tls13 '
 //      opaque context<0..255> = Context;
 // } HkdfLabel;
 //
+@[noinit]
 struct HkdfLabel {
 	length      int    // uint16 length = Length;u16
 	tls13_label string // ascii string, "tls13 " + label

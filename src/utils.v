@@ -1,43 +1,68 @@
+// Copyright © 2025 blackshirt.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
 module tls13
 
 import encoding.binary
 
-const max_u24 = 1 << 24 - 1 // 0x00FF_FFFF
-const mask_u24_value = u32(0x00FF_FFFF)
+const max_uint24 = 1 << 24 - 1 // 0x00FF_FFFF
+const mask_uint24 = u32(0x00FF_FFFF)
 
 // Uint24 was a simple type of 24-length unsigned integer to represent handshake message length.
 // Its represented as u32 value and by default serialized in big-endian order.
-type Uint24 = u32
-
-// from_u32 creates Uint24 from u32 values.
-fn Uint24.from_u32(val u32) !Uint24 {
-	if val > max_u24 {
-		return error('Uint24.from_u32: exceed value provided')
-	}
-	return Uint24(val & mask_u24_value)
+@[noinit]
+struct Uint24 {
+mut:
+	// masked underlying u32 value
+	value u32
 }
 
-// from_int creates Uint24 from int value.
-fn Uint24.from_int(val int) !Uint24 {
-	if val < 0 || val > max_u24 {
-		return error('Uint24.from_int: out of range value')
-	}
-	return Uint24(u32(val) & mask_u24_value)
+// An option for reading Uint24
+@[params]
+struct Uint24Options {
+pub mut:
+	endian u8 // 0 = big, 1 = little
 }
 
-// new creates Uint24 from arrays of 3-bytes values.
-fn Uint24.from_bytes(b []u8, opt Uint24Options) !Uint24 {
+// u24_from_u32 creates Uint24 from u32 values.
+@[inline]
+fn u24_from_u32(val u32) !Uint24 {
+	if val > max_uint24 {
+		return error('u24_from_u32: exceed value provided')
+	}
+	return Uint24{
+		value: val & mask_uint24
+	}
+}
+
+// u24_from_int creates Uint24 from int value.
+@[inline]
+fn u24_from_int(val int) !Uint24 {
+	if val < 0 || val > max_uint24 {
+		return error('u24_from_int: out of range value')
+	}
+	return Uint24{
+		value: val & mask_uint24
+	}
+}
+
+// u24_from_bytes creates Uint24 from arrays of 3-bytes values.
+@[direct_array_access]
+fn u24_from_bytes(b []u8, opt Uint24Options) !Uint24 {
 	if b.len != 3 {
-		return error('Uint24.from_bytes: bad length')
+		return error('u24_from_bytes: bad length')
 	}
 	// big-endian form
 	val := u32(b[2]) | (u32(b[1]) << u32(8)) | (u32(b[0]) << u32(16))
 
 	// Its should never happen
-	if val > max_u24 {
-		return error('Uint24.from_bytes: exceed value')
+	if val > max_uint24 {
+		return error('u24_from_bytes: exceed value')
 	}
-	return Uint24(val & mask_u24_value)
+	return Uint24{
+		value: val & mask_uint24
+	}
 }
 
 // bytes serializes Uint24 as a bytes array.
@@ -62,15 +87,10 @@ fn (v Uint24) bytes(opt Uint24Options) ![]u8 {
 	}
 }
 
-@[params]
-struct Uint24Options {
-pub mut:
-	endian u8 // 0 = big, 1 = little
-}
-
+// Buffer was a simple and general purposes bytes reader
 const max_buffer_size = max_i64
 
-// Simple and general purposes bytes reader
+@[noinit]
 struct Buffer {
 	// read only buffer of underlying data being wrapped
 	buf []u8
@@ -83,6 +103,7 @@ mut:
 struct BufferOptions {
 }
 
+// An option for reading the buffer.
 @[params]
 struct ReadBufferOpts {
 mut:
@@ -90,15 +111,17 @@ mut:
 }
 
 // new creates a new Buffer from non-null length of bytes b.
-fn Buffer.new(b []u8, opt BufferOptions) !Buffer {
+@[direct_array_access; inline]
+fn new_buffer(b []u8, opt BufferOptions) !Buffer {
 	if b.len == 0 {
-		return error('Buffer.new: unallowed null-length bytes')
+		return error('new_buffer: unallowed null-length bytes')
 	}
 	return Buffer{
-		buf: b
+		buf: b // we dont touch the buffer directly
 	}
 }
 
+// offset returns current offset within buffer
 fn (b Buffer) offset() i64 {
 	return b.off
 }
@@ -192,14 +215,14 @@ fn (mut b Buffer) peek_u16() !u16 {
 // Its updates the current offset with the new value.
 fn (mut b Buffer) read_u24() !Uint24 {
 	buf := b.read_bytes(3)!
-	return Uint24.from_bytes(buf, endian: u8(0x00))!
+	return u24_from_bytes(buf, endian: u8(0x00))!
 }
 
 // peek_u24 takes 3 bytes from buffer and represented it in big-endian order of Uint24 value
 // It does not updates the current offset.
 fn (mut b Buffer) peek_u24() !Uint24 {
 	buf := b.peek_bytes(3)!
-	return Uint24.from_bytes(buf, endian: u8(0x00))!
+	return u24_from_bytes(buf, endian: u8(0x00))!
 }
 
 // read_u32 read 4 bytes from buffer and represented it in big-endian order of u32 value

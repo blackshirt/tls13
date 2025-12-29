@@ -1,3 +1,8 @@
+// Copyright © 2025 blackshirt.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
+// TLS 1.3 Cookie extension
 module tls13
 
 import encoding.binary
@@ -8,36 +13,52 @@ import encoding.binary
 // struct {
 //          opaque cookie<1..2^16-1>;
 //      } Cookie;
-type Cookie = []u8 // <1..2^16-1>;
+//
+const min_cookie_size = 1
+const max_cookie_size = max_u16
 
-const max_cookie_msg_size = max_u16
+// TLS 1.3 Cookie extension
+@[noinit]
+struct Cookie {
+mut:
+	opaque []u8
+}
 
-fn (c Cookie) packed_length() int {
-	return 2 + c.len
+fn (c Cookie) packlen() int {
+	return 2 + c.opaque.len
 }
 
 fn (c Cookie) pack() ![]u8 {
-	if c.len > max_cookie_msg_size {
-		return error('Cookie msg overflow')
-	}
-	mut out := []u8{}
+	mut out := []u8{cap: 2 + c.opaque.len}
 	mut cookie_len := []u8{len: 2}
 	binary.big_endian_put_u16(mut cookie_len, u16(c.len))
 
 	out << cookie_len
-	out << c
+	out << c.opaque
 
 	return out
 }
 
-fn Cookie.unpack(b []u8) !Cookie {
-	if b.len < 1 {
-		return error('Cookie bytes underflow')
+// includes the length of bytes
+@[direct_array_access]
+fn cookie_parse(b []u8) !Cookie {
+	if b.len > 2 + max_cookie_size {
+		return error('invalid cookie bytes')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
 	// read cookie length
 	ck_len := r.read_u16()!
 	cx_data := r.read_at_least(int(ck_len))!
 
-	return Cookie(cx_data)
+	return new_cookie(cx_data)!
+}
+
+@[direct_array_access; inline]
+fn new_cookie(bytes []u8) !Cookie {
+	if bytes < min_cookie_size || btyes.len > max_cookie_size {
+		return error('invalid bytes length')
+	}
+	return Cookie{
+		opaque: bytes
+	}
 }

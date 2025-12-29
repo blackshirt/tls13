@@ -1,4 +1,4 @@
-// Copyright ©2025 blackshirt.
+// Copyright © 2025 blackshirt.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
@@ -85,57 +85,60 @@ fn tlsversion_from_u16(val u16) !TlsVersion {
 // TlsVersionList is an array of TLS version
 type TlsVersionList = []TlsVersion
 
-// the length of serialized array of version
-fn (tv []TlsVersion) packed_length() int {
-	return 1 + 2 * tv.len
+// packlen returns the length of serialized array of version
+fn (vls []TlsVersion) packlen() int {
+	return 1 + 2 * vls.len
 }
 
-// append adds version v into array of TLS version pvl.
+// append adds version v into array of TLS version vls.
 @[direct_array_access]
-fn (mut pvl []TlsVersion) append(v TlsVersion) {
-	if v in pvl {
+fn (mut vls []TlsVersion) append(v TlsVersion) {
+	// if v is already on the list, do nothing
+	if v in vls {
 		return
 	}
-	pvl << v
+	vls << v
 }
 
 // pack encodes array of TLS version into bytes array.
 @[inline]
-fn (pvl []TlsVersion) pack() ![]u8 {
+fn (vls []TlsVersion) pack() ![]u8 {
 	// the length of this version array should not exceed 255-item
-	length := pvl.len * 2
+	length := vls.len * 2
 	if length > max_tlversionlist_size {
 		return error('bad []TlsVersion length')
 	}
 	// output capacity = 1-byte length + the length itself.
 	mut out := []u8{cap: 1 + length}
-	
+
 	// serializes the length of the array
 	out << u8(length)
 	// serializes every version item
-	for v in pvl {
+	for v in vls {
 		out << v.pack()!
 	}
 
 	return out
 }
 
-// tlsversionlist_parse parses bytes into array of TLS version.
-// includes parses the length 
+// tlsverlist_parse parses bytes into array of TLS version.
+// includes parses the length
 @[direct_array_access; inline]
-fn tlsversionlist_parse(b []u8) ![]TlsVersion {
+fn tlsverlist_parse(b []u8) ![]TlsVersion {
 	if b.len < 2 {
 		return error('Bad TlsVersionList length')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
 	length := r.read_u8()!
 	vers := r.read_at_least(int(length))!
 
-	return tlsverslist_from_bytes(vers)!
+	return tlsverlist_from_bytes(vers)!
 }
 
+// tlsverlist_from_bytes creates array of version from bytes array.
+// The bytes length should be even
 @[direct_array_access; inline]
-fn tlsverslist_from_bytes(bytes []u8) ![]TlsVersion {
+fn tlsverlist_from_bytes(bytes []u8) ![]TlsVersion {
 	// the single version was 2-bytes length, so its must have even length
 	if bytes.len % 2 != 0 {
 		return error('TlsVersionList length tidak genap')
@@ -145,7 +148,7 @@ fn tlsverslist_from_bytes(bytes []u8) ![]TlsVersion {
 	for i < length {
 		v := tlsversion_parse(bytes[i..i + 2])!
 		pv.append(v)
-		i += v.packed_length()
+		i += v.packlen()
 	}
 
 	return pv
@@ -166,6 +169,7 @@ fn (mut vls []TlsVersion) sort() []TlsVersion {
 	return vls
 }
 
+// choose_supported_version chooses TLS 1.3 version from arrays of version in vls
 @[direct_array_access]
 fn choose_supported_version(vls []TlsVersion) !TlsVersion {
 	// choose the max version available in list

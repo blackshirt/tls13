@@ -1,15 +1,24 @@
+// Copyright © 2025 blackshirt.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
+// KeyShare TLS 1.3 extension
 module tls13
 
 import encoding.binary
 import ecdhe
 
-// non-nul key_exchange entry
+// non-nul kxchange entry
 const min_keyshareentry_size = 5 // 5?
 
+const min_kxchange_size = 1
+const max_kxchange_size = max_u16
+
+@[noinit]
 struct KeyShareEntry {
 mut:
-	group        NamedGroup = .x25519
-	key_exchange []u8 // <1..2^16-1>
+	group    NamedGroup = .x25519
+	kxchange []u8 // <1..2^16-1>
 }
 
 fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
@@ -20,8 +29,8 @@ fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
 	pubkey := kx.public_key(privkey)!
 
 	ks := KeyShareEntry{
-		group:        g
-		key_exchange: pubkey.bytes()!
+		group:    g
+		kxchange: pubkey.bytes()!
 	}
 	return ks
 }
@@ -29,20 +38,20 @@ fn new_keyshare_entry(g NamedGroup) !KeyShareEntry {
 @[direct_array_access; inline]
 fn (ks KeyShareEntry) pack() ![]u8 {
 	// key exchange data should have non-null
-	if ks.key_exchange.len < 1 {
+	if ks.kxchange.len < 1 {
 		return error('KeyShareEntry length: underflow')
 	}
-	if ks.key_exchange.len > max_u16 {
+	if ks.kxchange.len > max_u16 {
 		return error('KeyShareEntry length: overflow')
 	}
 	group := ks.group.pack()!
 	mut len := []u8{len: u16size}
-	binary.big_endian_put_u16(mut len, u16(ks.key_exchange.len))
+	binary.big_endian_put_u16(mut len, u16(ks.kxchange.len))
 
 	mut out := []u8{}
 	out << group
 	out << len
-	out << ks.key_exchange
+	out << ks.kxchange
 
 	return out
 }
@@ -63,8 +72,8 @@ fn KeyShareEntry.unpack(b []u8) !KeyShareEntry {
 	kxdata := r.read_at_least(int(kxlen))!
 
 	return KeyShareEntry{
-		group:        group
-		key_exchange: kxdata
+		group:    group
+		kxchange: kxdata
 	}
 }
 
@@ -75,7 +84,7 @@ fn (mut kss []KeyShareEntry) append(ke KeyShareEntry) {
 	// If one already exists with this type, replace it
 	for mut item in kss {
 		if item.group == ke.group {
-			item.key_exchange = ke.key_exchange
+			item.kxchange = ke.kxchange
 			continue
 		}
 	}
@@ -186,7 +195,7 @@ fn KeyShareExtension.unpack_from_extension_payload(data []u8, msg_type Handshake
 			for i < length {
 				e := KeyShareEntry.unpack(rem[i..])!
 				entries.append(e)
-				i += 2 + 2 + e.key_exchange.len
+				i += 2 + 2 + e.kxchange.len
 			}
 			ksc := KeyShareExtension{
 				msg_type:      .client_hello
