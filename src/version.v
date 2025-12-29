@@ -1,124 +1,160 @@
+// Copyright ©2025 blackshirt.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
+// TLS 1.3 Protocol version
 module tls13
 
 import arrays
 import encoding.binary
 
-// uint16 ProtocolVersion;
-type ProtocolVersion = u16
+// maximum size of arrays of TLS version, ie, 255
+const max_tlversionlist_size = max_u8
+const min_tlsversionlist_size = 1
 
-const u16size = 2
+// TLS 1.3 ProtocolVersion;
+//
+// This document describes TLS 1.3, which uses the version 0x0304.
+// This version value is historical, deriving from the use of 0x0301 for TLS 1.0 and 0x0300 for SSL 3.0.
+// In order to maximize backward compatibility, a record containing an initial ClientHello SHOULD have
+// version 0x0301 (reflecting TLS 1.0) and a record containing a second
+// ClientHello or a ServerHello MUST have version 0x0303 (reflecting TLS 1.2).
+type TlsVersion = u16
 
-// vfmt off
-const tls_v13 = ProtocolVersion(0x0304)
-const tls_v12 = ProtocolVersion(0x0303)
-const tls_v11 = ProtocolVersion(0x0302)
-const tls_v10 = ProtocolVersion(0x0301)
-// vfmt on
+const tls_v13 = TlsVersion(0x0304)
+const tls_v12 = TlsVersion(0x0303)
+const tls_v11 = TlsVersion(0x0302)
+const tls_v10 = TlsVersion(0x0301)
+const tls_v00 = TlsVersion(0x0300)
 
-// pack serializes ProtocolVersion into bytes array.
-@[inline]
-fn (v ProtocolVersion) pack() ![]u8 {
-	if v > max_u16 {
-		return error('ProtocolVersion exceed limit')
+// str represents TLS version as a common name string
+fn (v TlsVersion) str() string {
+	match v {
+		0x0304 { return 'TLS 1.3' }
+		0x0303 { return 'TLS 1.2' }
+		0x0302 { return 'TLS 1.1' }
+		0x0301 { return 'TLS 1.0' }
+		0x0300 { return 'SSL 3.0' } // TLS 0.0
+		else { panic('unsupported version') }
 	}
-	mut out := []u8{len: u16size}
+}
+
+// pack serializes version into bytes array.
+@[inline]
+fn (v TlsVersion) pack() ![]u8 {
+	mut out := []u8{len: 2}
 	binary.big_endian_put_u16(mut out, v)
 	return out
 }
 
-@[inline]
-fn (v ProtocolVersion) packed_length() int {
-	return u16size
-}
-
-// unpack deserializes bytes array into ProtocolVersion
+// tlsversion_parse parses (deserializes) bytes array into TlsVersion
 @[direct_array_access; inline]
-fn ProtocolVersion.unpack(b []u8) !ProtocolVersion {
-	if b.len != u16size {
-		return error('Bad ProtocolVersion buffer len')
+fn tlsversion_parse(b []u8) !TlsVersion {
+	if b.len != 2 {
+		return error('Bad TlsVersion buffer len')
 	}
 	v := binary.big_endian_u16(b)
-	return ProtocolVersion.from_u16(v)!
+	return tlsversion_from_u16(v)!
 }
 
+// tlsversion_from_u16 creates TLS version from u16 value
 @[inline]
-fn ProtocolVersion.from_u16(val u16) !ProtocolVersion {
-	if val <= u16(0) || val > max_u16 {
-		return error('Bad values for ProtocolVersion')
-	}
+fn tlsversion_from_u16(val u16) !TlsVersion {
 	match val {
-		// vfmt off
-		u16(0x0301) { return tls_v10 }
-		u16(0x0302) { return tls_v11 }
-		u16(0x0303) { return tls_v12 }
-		u16(0x0304) { return tls_v13 }
-		else {
-			return error('unsupported ProtocolVersion value')
+		u16(0x0300) {
+			return tls_v00
 		}
-		// vfmt on
+		u16(0x0301) {
+			return tls_v10
+		}
+		u16(0x0302) {
+			return tls_v11
+		}
+		u16(0x0303) {
+			return tls_v12
+		}
+		u16(0x0304) {
+			return tls_v13
+		}
+		else {
+			return error('unsupported TlsVersion value')
+		}
 	}
 }
 
-fn (mut pvl []ProtocolVersion) append(v ProtocolVersion) {
+// TlsVersionList is an array of TLS version
+type TlsVersionList = []TlsVersion
+
+// the length of serialized array of version
+fn (tv []TlsVersion) packed_length() int {
+	return 1 + 2 * tv.len
+}
+
+// append adds version v into array of TLS version pvl.
+@[direct_array_access]
+fn (mut pvl []TlsVersion) append(v TlsVersion) {
 	if v in pvl {
 		return
 	}
 	pvl << v
 }
 
+// pack encodes array of TLS version into bytes array.
 @[inline]
-fn (pvl []ProtocolVersion) pack() ![]u8 {
+fn (pvl []TlsVersion) pack() ![]u8 {
+	// the length of this version array should not exceed 255-item
 	length := pvl.len * 2
-	if length > max_u8 {
-		return error('bad length')
+	if length > max_tlversionlist_size {
+		return error('bad []TlsVersion length')
 	}
-	mut out := []u8{}
+	// output capacity = 1-byte length + the length itself.
+	mut out := []u8{cap: 1 + length}
+	
+	// serializes the length of the array
 	out << u8(length)
-
+	// serializes every version item
 	for v in pvl {
-		o := v.pack()!
-		out << o
+		out << v.pack()!
 	}
 
 	return out
 }
 
-@[inline]
-fn (pvl []ProtocolVersion) packed_length() int {
-	return 1 + 2 * pvl.len
-}
-
-type ProtocolVersionList = []ProtocolVersion
-
+// tlsversionlist_parse parses bytes into array of TLS version.
+// includes parses the length 
 @[direct_array_access; inline]
-fn ProtocolVersionList.unpack(b []u8) !ProtocolVersionList {
-	if b.len < 1 {
-		return error('Bad ProtocolVersionList length')
+fn tlsversionlist_parse(b []u8) ![]TlsVersion {
+	if b.len < 2 {
+		return error('Bad TlsVersionList length')
 	}
 	mut r := Buffer.new(b)!
 	length := r.read_u8()!
 	vers := r.read_at_least(int(length))!
 
-	if vers.len % 2 != 0 {
-		return error('ProtocolVersionList length tidak genap')
+	return tlsverslist_from_bytes(vers)!
+}
+
+@[direct_array_access; inline]
+fn tlsverslist_from_bytes(bytes []u8) ![]TlsVersion {
+	// the single version was 2-bytes length, so its must have even length
+	if bytes.len % 2 != 0 {
+		return error('TlsVersionList length tidak genap')
 	}
 	mut i := 0
-	mut pv := []ProtocolVersion{}
+	mut pv := []TlsVersion{cap: bytes.len / 2}
 	for i < length {
-		v := ProtocolVersion.unpack(vers[i..i + 2])!
+		v := tlsversion_parse(bytes[i..i + 2])!
 		pv.append(v)
 		i += v.packed_length()
 	}
 
-	pvl := ProtocolVersionList(pv)
-	return pvl
+	return pv
 }
 
-// Utility function
-//
-// sort does sorting of ProtocolVersion arrays in descending order, from biggest to the lowest version.
-fn (mut vls []ProtocolVersion) sort() []ProtocolVersion {
-	vls.sort_with_compare(fn (v1 &ProtocolVersion, v2 &ProtocolVersion) int {
+// sort does sorting of TlsVersion arrays in descending order, from biggest to the lowest version.
+@[direct_array_access]
+fn (mut vls []TlsVersion) sort() []TlsVersion {
+	vls.sort_with_compare(fn (v1 &TlsVersion, v2 &TlsVersion) int {
 		if v1 < v2 {
 			return 1
 		}
@@ -130,7 +166,8 @@ fn (mut vls []ProtocolVersion) sort() []ProtocolVersion {
 	return vls
 }
 
-fn choose_supported_version(vls []ProtocolVersion) !ProtocolVersion {
+@[direct_array_access]
+fn choose_supported_version(vls []TlsVersion) !TlsVersion {
 	// choose the max version available in list
 	// RFC mandates its in sorted form.
 	max_ver := arrays.max(vls)!
