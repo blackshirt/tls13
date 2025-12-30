@@ -45,7 +45,7 @@ fn (ks KeyShareEntry) pack() ![]u8 {
 		return error('KeyShareEntry length: overflow')
 	}
 	group := ks.group.pack()!
-	mut len := []u8{len: u16size}
+	mut len := []u8{len: 2}
 	binary.big_endian_put_u16(mut len, u16(ks.kxchange.len))
 
 	mut out := []u8{}
@@ -102,7 +102,7 @@ fn (kse []KeyShareEntry) pack() ![]u8 {
 	if payload.len > max_u16 {
 		return error('Bad keyshare entry arrays length: overflow')
 	}
-	mut kse_len := []u8{len: u16size}
+	mut kse_len := []u8{len: 2}
 	binary.big_endian_put_u16(mut kse_len, u16(payload.len))
 
 	mut out := []u8{}

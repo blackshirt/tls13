@@ -7,71 +7,73 @@ module tls13
 
 import encoding.binary
 
-// serializer for u16-sized opaque, like NamedGroup, CipherSuite, Version.
-// It will panic if T is not u16-sized opaque
+// 1. Helpers for u8-size opaques.
+//
+// Some of TLS 1.3 structures types, like ContentType, HandshakeType,  NameType, etc mostly was u8-size opaque.
+@[direct_array_access; inline]
+fn pack_u8list[T](ts []T) []u8 {
+	mut out := []u8{cap: t.len}
+	for item in ts {
+		out << u8(item)
+	}
+	return out
+}
+
+@[direct_array_access]
+fn pack_u8list[T](ts []T, n int) ![]u8 {
+	c := cap_u8list[T](ts, n)
+	mut out := []u8{cap: c}
+	match n {
+		1 {
+			if ts.len > max_u8 {
+				return error('exceed max_u8')
+			}
+			out << u8(ts.len)
+		}
+		2 {
+			mut bol2 := []u8{len: 2}
+			binary.big_endian_put_u16(mut bol2, u16(ts.len))
+			out << bol2
+		}
+		else {
+			return error('unsupported length')
+		}
+	}
+	for item in ts {
+		out << u8(item)
+	}
+	return out
+}
+
+@[direct_array_access; inline]
+fn cap_u8list[T](ts []T, n int) int {
+	mut c := ts.len
+	match n {
+		1 { c += 1 }
+		2 { c += 2 }
+		else { panic('invalid length') }
+	}
+	return c
+}
+
+// 2. Helpers for u16-sized opaque.
+//
+// Some opaques, like TLS 1.3 NamedGroup, CipherSuite, Version etc was u16-sized entity.
+// This module contains some helpers in the mean of serializer (and deserializer) for that
+// entities. It will panic if entity was non u16-sized opaque.
+// Its also contains another utilities.
+
+// pack_u16item encodes an u16-sized item T into bytes array.
 @[inline]
 fn pack_u16item[T](t T) []u8 {
 	mut out := []u8{len: 2}
+	// we directly translated T into u16 type.
+	// TODO: add support for another u16-construct with callback
 	binary.big_endian_put_u16(mut out, u16(t))
 	return out
 }
 
-// pack_u16len returns the length of serialized u16-sized opaque T.
-@[inline]
-fn pack_u16len[T](t T) int {
-	return 2
-}
-
-@[direct_array_access]
-fn append_u16item[T](mut ts []T, item T) {
-	if item in ts {
-		return
-	}
-	ts << item
-}
-
-@[inline]
-fn parse_u16item[T](bytes []u8, cb_make fn (u16) !T) !T {
-	if bytes.len != 2 {
-		return error('bad bytes.len for u16-opaque')
-	}
-	v := binary.big_endian_u16(bytes)
-	return cb_make(v)!
-}
-
-@[inline]
-fn parse_u16list[T](bytes []u8, cb_make fn (u16) !T) ![]T {
-	if bytes.len % 2 != 0 {
-		return error('even bytes length was needed')
-	}
-	mut items := []T{cap: bytes.len / 2}
-	mut i := 0
-	for i < bytes.len {
-		item := parse_u16item[T](bytes[i..i + 2], cb_make)!
-		append_u16item[T](mut items, item)
-		i += 2
-	}
-	return items
-}
-
-@[direct_array_access]
-fn parse_u16list_with_len[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
-	mut r := new_buffer(bytes)!
-
-	// gets the length part
-	// its only supports 1 or 2 bytes-length
-	mut length := 0
-	match n {
-		1 { length = int(r.read_u8()!) }
-		2 { length = int(r.read_u16()!) }
-		else { return error('unsupported length') }
-	}
-	src := r.read_at_least(length)!
-
-	return parse_u16list[T](src, cb_make)!
-}
-
-// pack_u16list encodes arrays of u16-sized opaque in ts into bytes array.
+// pack_u16list encodes arrays of u16-sized opaque T in ts into bytes array.
 @[direct_array_access]
 fn pack_u16list[T](ts []T) []u8 {
 	mut out := []u8{cap: 2 * t.len}
@@ -82,23 +84,12 @@ fn pack_u16list[T](ts []T) []u8 {
 	return out
 }
 
-// cap_u16list output capacities the list ts with prepended n-bytes length
-@[inline]
-fn cap_u16list[T](ts []T, n int) int {
-	mut c := 2 * ts.len
-	match n {
-		1 { c += 1 }
-		2 { c += 2 }
-		else { panic('unsupported length') }
-	}
-	return c
-}
-
-// pack_u16list_with_len encodes the list ts prepended with n-byte(s) length into bytes array.
-// Its only supports with 1 or 2 bytes-length.
+// pack_u16list_with_len encodes the array of item T in ts prepended with n-byte(s) length into bytes array.
+// Its only supports with 1 or 2 bytes-length, otherwise returns an error.
 @[direct_array_access]
 fn pack_u16list_with_len[T](ts []T, n int) ![]u8 {
-	c := cap_u16list[T](ts, n)
+	// get the bytes capacities for the output length
+	c := cap_u16list_with_len[T](ts, n)
 	mut out := []u8{cap: c}
 	match n {
 		1 {
@@ -129,10 +120,138 @@ fn pack_u16list_with_len[T](ts []T, n int) ![]u8 {
 	return out
 }
 
-// 3-bytes opaque helpers
+// pack_u16len returns the length of serialized u16-sized opaque T.
+@[inline]
+fn pack_u16len[T](t T) int {
+	return 2
+}
+
+// append_u16item adds an item into arrays of item ts.
+@[direct_array_access]
+fn append_u16item[T](mut ts []T, item T) {
+	// if item already on there, do nothing
+	if item in ts {
+		return
+	}
+	ts << item
+}
+
+// parse_u16item decodes bytes into T with cb_make was a constructor of T from u16 value.
+@[inline]
+fn parse_u16item[T](bytes []u8, cb_make fn (u16) !T) !T {
+	if bytes.len != 2 {
+		return error('bad bytes.len for u16-opaque')
+	}
+	v := binary.big_endian_u16(bytes)
+	return cb_make(v)!
+}
+
+// parse_u16list decodes bytes into arrays of item T with cb_make was a constructor of T from u16 value.
+// Its done without parsing the prepended length.
+@[inline]
+fn parse_u16list[T](bytes []u8, cb_make fn (u16) !T) ![]T {
+	if bytes.len % 2 != 0 {
+		return error('even bytes length was needed')
+	}
+	mut items := []T{cap: bytes.len / 2}
+	mut i := 0
+	for i < bytes.len {
+		item := parse_u16item[T](bytes[i..i + 2], cb_make)!
+		append_u16item[T](mut items, item)
+		i += 2
+	}
+	return items
+}
+
+// parse_u16list_with_len decodes bytes into arrays of item T with cb_make was a constructor of T from u16 value.
+// Its also parsing prepended length of array of item.
+@[direct_array_access]
+fn parse_u16list_with_len[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
+	mut r := new_buffer(bytes)!
+
+	// gets the length part, its only supports 1 or 2 bytes-length
+	mut length := 0
+	match n {
+		1 { length = int(r.read_u8()!) }
+		2 { length = int(r.read_u16()!) }
+		else { return error('unsupported length') }
+	}
+	src := r.read_at_least(length)!
+
+	return parse_u16list[T](src, cb_make)!
+}
+
+// cap_u16list_with_len tells the length of capacities needed to serialize the list ts with prepended n-bytes length
+@[inline]
+fn cap_u16list_with_len[T](ts []T, n int) int {
+	mut c := 2 * ts.len
+	match n {
+		1 { c += 1 }
+		2 { c += 2 }
+		else { panic('unsupported length') }
+	}
+	return c
+}
+
+// 3. Raw-bytes opaque, ie, []u8  helpers
 //
-const max_uint24 = 1 << 24 - 1 // 0x00FF_FFFF
-const mask_uint24 = u32(0x00FF_FFFF)
+// Some TLS 1.3 likes Cookie extension, Hostname , key exchange payload was defined as raw bytes
+// limited by some length.
+
+@[direct_array_access; inline]
+fn packraw_item_with_len[T](t T, cb_raw fn (t T) []u8, n int) ![]u8 {
+	c := capraw_item[T](t, cb_raw, n)
+	mut out := []u8{cap: c}
+	match n {
+		1 {
+			if t.len > max_u8 {
+				return error('exceed max_u8')
+			}
+			out << u8(t.len)
+		}
+		2 {
+			if t.len > max_u16 {
+				return error('exceed max_u16')
+			}
+			mut bol2 := []u8{len: 2}
+			binary.big_endian_put_u16(mut bol2, u16(t.len))
+			out << bol2
+		}
+		3 {
+			if t.len > max_u24 {
+				return error('exceed max_u24')
+			}
+			bol3 := u24_from_int(t.len)!
+			out << bol3
+		}
+		else {
+			return error('invalid length')
+		}
+	}
+	// get the raw bytes item, and append into output
+	out << cb_raw(t)
+
+	return out
+}
+
+// capraw_item tells needed capacities of serializes t prepended with n-bytes length.
+@[inline]
+fn capraw_item[T](t T, cb_raw fn (t T) []u8, n int) int {
+	// get the length of underlying payload
+	mut c := cb_raw(t).len
+	match n {
+		1 { c += 1 }
+		2 { c += 2 }
+		3 { c += 3 }
+		else { panic('unsupported length') }
+	}
+	return c
+}
+
+// 4. Helpers for an opaque with 24-bits size
+//
+const max_u24 = 1 << 24 - 1 // 0x00FF_FFFF
+const mask_u24 = u32(0x00FF_FFFF)
 
 // Uint24 was a simple type of 24-length unsigned integer to represent handshake message length.
 // Its represented as u32 value and by default serialized in big-endian order.
@@ -153,22 +272,22 @@ pub mut:
 // u24_from_u32 creates Uint24 from u32 values.
 @[inline]
 fn u24_from_u32(val u32) !Uint24 {
-	if val > max_uint24 {
+	if val > max_u24 {
 		return error('u24_from_u32: exceed value provided')
 	}
 	return Uint24{
-		value: val & mask_uint24
+		value: val & mask_u24
 	}
 }
 
 // u24_from_int creates Uint24 from int value.
 @[inline]
 fn u24_from_int(val int) !Uint24 {
-	if val < 0 || val > max_uint24 {
+	if val < 0 || val > max_u24 {
 		return error('u24_from_int: out of range value')
 	}
 	return Uint24{
-		value: val & mask_uint24
+		value: val & mask_u24
 	}
 }
 
@@ -182,11 +301,11 @@ fn u24_from_bytes(b []u8, opt Uint24Options) !Uint24 {
 	val := u32(b[2]) | (u32(b[1]) << u32(8)) | (u32(b[0]) << u32(16))
 
 	// Its should never happen
-	if val > max_uint24 {
+	if val > max_u24 {
 		return error('u24_from_bytes: exceed value')
 	}
 	return Uint24{
-		value: val & mask_uint24
+		value: val & mask_u24
 	}
 }
 

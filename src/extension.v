@@ -173,6 +173,7 @@ fn ExtensionType.unpack(b []u8) !ExtensionType {
 
 const min_extension_size = 4
 
+@[noinit]
 struct Extension {
 mut:
 	tipe   ExtensionType // u16 value

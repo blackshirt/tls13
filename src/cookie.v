@@ -24,6 +24,11 @@ mut:
 	opaque []u8
 }
 
+@[inline]
+fn get_opaque(c Cookie) []U8 {
+	return c.opaque
+}
+
 fn (c Cookie) packlen() int {
 	return 2 + c.opaque.len
 }
