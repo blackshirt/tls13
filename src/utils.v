@@ -10,6 +10,7 @@ import encoding.binary
 // 1. Helpers for u8-size opaques.
 //
 // Some of TLS 1.3 structures types, like ContentType, HandshakeType,  NameType, etc mostly was u8-size opaque.
+// This type of opaque commonly defined as `type SomeOpaque = u8`
 
 // pack_u8list encodes array of u8-sized opaque in ts into bytes array.
 @[direct_array_access; inline]
@@ -65,6 +66,7 @@ fn cap_u8list[T](ts []T, n int) int {
 // This module contains some helpers in the mean of serializer (and deserializer) for that
 // entities. It will panic if entity was non u16-sized opaque.
 // Its also contains another utilities.
+// This type of opaque commonly defined as `type SomeOpaque = u16`
 
 // pack_u16item encodes an u16-sized item T into bytes array.
 @[inline]
@@ -200,6 +202,7 @@ fn cap_u16list_with_len[T](ts []T, n int) int {
 //
 // Some TLS 1.3 likes Cookie extension, Hostname , key exchange payload was defined as raw bytes
 // limited by some length.
+// This type of opaque commonly defined as `type SomeOpaque = []u8`
 
 @[direct_array_access; inline]
 fn packraw_item_with_len[T](t T, cb_raw fn (t T) []u8, n int) ![]u8 {
@@ -334,7 +337,10 @@ fn (v Uint24) bytes(opt Uint24Options) ![]u8 {
 	}
 }
 
+// 5. Simple bytes reader
+//
 // Buffer was a simple and general purposes bytes reader
+//
 const max_buffer_size = max_i64
 
 @[noinit]

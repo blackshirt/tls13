@@ -3,50 +3,6 @@ module tls13
 import rand
 import encoding.binary
 
-// ContentType is content type of TLS 1.3 record
-// ContentType = u8
-enum ContentType as u8 {
-	invalid            = 0
-	change_cipher_spec = 20
-	alert              = 21
-	handshake          = 22
-	application_data   = 23
-	heartbeat          = 24
-}
-
-fn ContentType.from_u8(val u8) !ContentType {
-	match val {
-		// vfmt off
-		20 { return .change_cipher_spec }
-		21 { return .alert }
-		22 { return .handshake }
-		23 { return .application_data }
-		24 { return .heartbeat }
-		0  { return .invalid }
-		// otherwise, return as is or an error ?
-		else {
-			return error('unsupported ContentType value')
-		}
-		// vfmt on
-	}
-}
-
-@[inline]
-fn (c ContentType) pack() ![]u8 {
-	if u8(c) > max_u8 {
-		return error('ContentType exceed limit')
-	}
-	return [u8(c)]
-}
-
-@[direct_array_access; inline]
-fn ContentType.unpack(b []u8) !ContentType {
-	if b.len != 1 {
-		return error('Bad ContentType bytes')
-	}
-	return ContentType.from_u8(b[0])!
-}
-
 // ChangeCipherSpec type = u8
 enum CcsType as u8 {
 	ccs = 0x01

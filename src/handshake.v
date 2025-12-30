@@ -10,81 +10,11 @@ const helloretry_magic = [u8(0xCF), 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0x
 const tls12_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x01]
 const tls11_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x00]
 
-// HandshakeType = u8
-enum HandshakeType as u8 {
-	hello_request        = 0 // _RESERVED
-	client_hello         = 1
-	server_hello         = 2
-	hello_verify_request = 3 // _RESERVED
-	new_session_ticket   = 4
-	end_of_early_data    = 5
-	hello_retry_request  = 6 // _RESERVED =
-	encrypted_extensions = 8
-	certificate          = 11
-	server_key_exchange  = 12 // _RESERVED
-	certificate_request  = 13
-	server_hello_done    = 14 // _RESERVED
-	certificate_verify   = 15
-	client_key_exchange  = 16 // _RESERVED
-	finished             = 20
-	certificate_url      = 21 // _RESERVED
-	certificate_status   = 22 // _RESERVED
-	supplemental_data    = 23 // _RESERVED
-	key_update           = 24
-	message_hash         = 254
-}
-
-@[inline]
-fn (h HandshakeType) pack() ![]u8 {
-	if u8(h) > max_u8 {
-		return error('HandshakeType exceed limit')
-	}
-	return [u8(h)]
-}
-
-@[direct_array_access; inline]
-fn HandshakeType.unpack(b []u8) !HandshakeType {
-	if b.len != 1 {
-		return error('bad length of HandshakeType bytes')
-	}
-	return HandshakeType.from_u8(b[0])!
-}
-
-@[inline]
-fn HandshakeType.from_u8(val u8) !HandshakeType {
-	match val {
-		// vfmt off
-		0x00 { return .hello_request }
-		0x01 { return .client_hello }
-		0x02 { return .server_hello }
-		0x03 { return .hello_verify_request }
-		0x04 { return .new_session_ticket }
-		0x05 { return .end_of_early_data }
-		0x06 { return .hello_retry_request }
-		0x08 { return .encrypted_extensions }
-		0x0b { return .certificate }
-		0x0c { return .server_key_exchange }
-		0x0d { return .certificate_request }
-		0x0e { return .server_hello_done }
-		0x0f { return .certificate_verify }
-		0x10 { return .client_key_exchange }
-		0x14 { return .finished }
-		0x15 { return .certificate_url }
-		0x16 { return .certificate_status }
-		0x17 { return .supplemental_data }
-		0x18 { return .key_update }
-		0xfe { return .message_hash }
-		else {
-			return error('unsupported value for HandshakeType')
-		}
-		// vfmt on
-	}
-}
-
-const min_handshake_msg_size = 4
+const min_hskmsg_size = 4
 
 // Handshake represents Tls 1.3 handshake message.
 //
+@[noinit]
 struct Handshake {
 	msg_type HandshakeType // u8 value
 	length   int           // max_u24
@@ -93,7 +23,7 @@ struct Handshake {
 
 @[inline]
 fn (h Handshake) packed_length() int {
-	return min_handshake_msg_size + h.payload.len
+	return min_hskmsg_size + h.payload.len
 }
 
 fn (h Handshake) expect_hsk_type(hsktype HandshakeType) bool {
@@ -140,7 +70,7 @@ fn (h Handshake) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn Handshake.unpack(b []u8) !Handshake {
-	if b.len < min_handshake_msg_size {
+	if b.len < min_hskmsg_size {
 		return error('Underflow of Handshake bytes')
 	}
 	mut r := Buffer.new(b)!
@@ -186,7 +116,7 @@ type HandshakeList = []Handshake
 // unpack_to_multi_handshake add supports to this situation, its unpack bytes array as
 // array of Handshake
 fn unpack_to_multi_handshake(b []u8) ![]Handshake {
-	if b.len < min_handshake_msg_size {
+	if b.len < min_hskmsg_size {
 		return error('unpack_to_multi_handshakes: Underflow of Handshakes bytes')
 	}
 	mut hs := []Handshake{}

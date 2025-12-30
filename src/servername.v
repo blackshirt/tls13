@@ -2,39 +2,6 @@ module tls13
 
 import encoding.binary
 
-// NameType = u8
-enum NameType as u8 {
-	host_name    = 0x00
-	unknown_name = 0xff
-	// .. (255)
-}
-
-@[inline]
-fn NameType.from_u8(val u8) !NameType {
-	match val {
-		0x00 { return .host_name }
-		0xff { return .unknown_name }
-		else { return error('unsupported NameType value') }
-	}
-}
-
-@[inline]
-fn (n NameType) pack() ![]u8 {
-	if u8(n) > max_u8 {
-		return error('NameType exceed limit')
-	}
-	return [u8(n)]
-}
-
-@[direct_array_access; inline]
-fn NameType.unpack(b []u8) !NameType {
-	if b.len != 1 {
-		return error('bad b.len for NameType')
-	}
-
-	return NameType.from_u8(b[0])!
-}
-
 // https://datatracker.ietf.org/doc/html/rfc6066#section-3
 
 // opaque HostName<1..2^16-1>
@@ -68,6 +35,7 @@ fn Hostname.unpack(b []u8) !Hostname {
 	return unsafe { Hostname(bytes) }
 }
 
+@[noinit]
 struct ServerName {
 	name_type NameType
 mut:
