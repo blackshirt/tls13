@@ -10,6 +10,8 @@ import encoding.binary
 // 1. Helpers for u8-size opaques.
 //
 // Some of TLS 1.3 structures types, like ContentType, HandshakeType,  NameType, etc mostly was u8-size opaque.
+
+// pack_u8list encodes array of u8-sized opaque in ts into bytes array.
 @[direct_array_access; inline]
 fn pack_u8list[T](ts []T) []u8 {
 	mut out := []u8{cap: t.len}
@@ -19,8 +21,10 @@ fn pack_u8list[T](ts []T) []u8 {
 	return out
 }
 
+// pack_u8list_with_len encodes array of u8-sized opaque in ts into bytes array
+// prepended with their length specified in n.
 @[direct_array_access]
-fn pack_u8list[T](ts []T, n int) ![]u8 {
+fn pack_u8list_with_len[T](ts []T, n int) ![]u8 {
 	c := cap_u8list[T](ts, n)
 	mut out := []u8{cap: c}
 	match n {
@@ -39,12 +43,11 @@ fn pack_u8list[T](ts []T, n int) ![]u8 {
 			return error('unsupported length')
 		}
 	}
-	for item in ts {
-		out << u8(item)
-	}
+	out << pack_u8list[T](ts)
 	return out
 }
 
+// cap_u8list gets the capacities needed with specified length for ts.
 @[direct_array_access; inline]
 fn cap_u8list[T](ts []T, n int) int {
 	mut c := ts.len
