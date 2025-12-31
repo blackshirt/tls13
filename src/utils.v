@@ -36,9 +36,10 @@ fn pack_u8list_withlen[T](ts []T, n int) ![]u8 {
 			out << u8(ts.len)
 		}
 		2 {
-			mut bol2 := []u8{len: 2}
-			binary.big_endian_put_u16(mut bol2, u16(ts.len))
-			out << bol2
+			if ts.len > max_u16 {
+				return error('exceed max_u16')
+			}
+			out << pack_u16item[int](ts.len)
 		}
 		else {
 			return error('unsupported length')
@@ -61,13 +62,11 @@ fn parse_u8item[T](bytes []8, cb_make fn (u8) !T) !T {
 // cap_u8list gets the capacities needed with specified length for ts.
 @[direct_array_access; inline]
 fn cap_u8list[T](ts []T, n int) int {
-	mut c := ts.len
 	match n {
-		1 { c += 1 }
-		2 { c += 2 }
+		1 { return 1 + ts.len }
+		2 { return 2 + ts.len }
 		else { panic('invalid length') }
 	}
-	return c
 }
 
 // 2. Helpers for u16-sized opaque.
@@ -121,9 +120,7 @@ fn pack_u16list_withlen[T](ts []T, n int) ![]u8 {
 				return error('length exceed max_u16')
 			}
 			// serializes two-bytes length into output
-			mut bol := []u8{len: 2}
-			binary.big_endian_put_u16(mut bol, u16(2 * ts.len))
-			out << bol
+			out << pack_u16item[int](2 * ts.len)
 		}
 		else {
 			return error('unsupported length')
@@ -199,13 +196,11 @@ fn parse_u16list_withlen[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
 // cap_u16list_withlen tells the length of capacities needed to serialize the list ts with prepended n-bytes length
 @[inline]
 fn cap_u16list_withlen[T](ts []T, n int) int {
-	mut c := 2 * ts.len
 	match n {
-		1 { c += 1 }
-		2 { c += 2 }
+		1 { return 1 + 2 * ts.len }
+		2 { return 2 + 2 * ts.len }
 		else { panic('unsupported length') }
 	}
-	return c
 }
 
 // 3. Raw-bytes opaque, ie, []u8  helpers
@@ -250,15 +245,12 @@ fn pack_raw_withlen(r []u8, n int) ![]u8 {
 // packlen_raw tells needed capacities of serializes r prepended with n-bytes length.
 @[inline]
 fn packlen_raw(r []u8, n int) int {
-	// get the length of underlying payload
-	mut c := r.len
 	match n {
-		1 { c += 1 }
-		2 { c += 2 }
-		3 { c += 3 }
+		1 { return r.len + 1 }
+		2 { return r.len + 2 }
+		3 { return r.len + 3 }
 		else { panic('unsupported length') }
 	}
-	return c
 }
 
 // 4. Helpers for an opaque with 24-bits size
