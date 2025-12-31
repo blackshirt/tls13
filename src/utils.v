@@ -247,7 +247,7 @@ fn pack_raw_withlen(r []u8, n int) ![]u8 {
 	return out
 }
 
-// packlen_raw tells needed capacities of serializes t prepended with n-bytes length.
+// packlen_raw tells needed capacities of serializes r prepended with n-bytes length.
 @[inline]
 fn packlen_raw(r []u8, n int) int {
 	// get the length of underlying payload

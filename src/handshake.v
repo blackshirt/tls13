@@ -801,12 +801,14 @@ fn CertificateEntryList.unpack(b []u8) !CertificateEntryList {
 	return CertificateEntryList(cel)
 }
 
-const min_certificate_msg_size = 4
+const min_certificate_size = 4
 
 // 4.4.2.  Certificate
 // https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.2
 //
+@[noinit]
 struct Certificate {
+mut:
 	context  []u8               // <0..2^8-1>;
 	certlist []CertificateEntry // <0..2^24-1>;
 }
@@ -840,7 +842,7 @@ fn (c Certificate) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn Certificate.unpack(b []u8) !Certificate {
-	if b.len < min_certificate_msg_size {
+	if b.len < min_certificate_size {
 		return error('Bad Certificate bytes: underflow')
 	}
 	mut r := new_buffer(b)!
@@ -914,6 +916,8 @@ fn parse_certverify(b []u8) !CertificateVerify {
 	return cv
 }
 
+// 4.4.4.  Finished
+//
 @[noinit]
 struct Finished {
 mut:
@@ -995,14 +999,10 @@ fn pack_nst(st NewSessionTicket) ![]u8 {
 	binary.big_endian_put_u32(mut plus2[4..8], st.ageadd)
 	out << plus2
 
-	out << u8(st.nonce.len)
-	out << st.nonce
-
-	mut tkt_len := []u8{len: 2}
-	binary.big_endian_put_u16(mut tkt_len, u16(st.ticket.len))
-	out << ttkt_len
-	out << st.ticket
-
+	// encodes nst nonce with 1-byte length
+	out << pack_raw_withlen(st.nonce, 1)!
+	// encodes nst ticket with 2-bytes length
+	out << pack_raw_withlen(st.ticket, 2)!
 	// encodes extension list with their length
 	out << pack_xslist_withlen(st.xslist)!
 
