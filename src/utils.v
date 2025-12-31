@@ -15,7 +15,7 @@ import encoding.binary
 // pack_u8list encodes array of u8-sized opaque in ts into bytes array.
 @[direct_array_access; inline]
 fn pack_u8list[T](ts []T) []u8 {
-	mut out := []u8{cap: t.len}
+	mut out := []u8{cap: ts.len}
 	for item in ts {
 		out << u8(item)
 	}
@@ -215,46 +215,43 @@ fn cap_u16list_withlen[T](ts []T, n int) int {
 // This type of opaque commonly defined as `type SomeOpaque = []u8`
 
 @[direct_array_access; inline]
-fn packraw_item_withlen[T](t T, cb_raw fn (t T) []u8, n int) ![]u8 {
-	c := capraw_item[T](t, cb_raw, n)
-	mut out := []u8{cap: c}
+fn pack_raw_withlen(r []u8, n int) ![]u8 {
+	mut out := []u8{cap: packlen_raw(r, n)}
 	match n {
 		1 {
-			if t.len > max_u8 {
+			if r.len > max_u8 {
 				return error('exceed max_u8')
 			}
-			out << u8(t.len)
+			out << u8(r.len)
 		}
 		2 {
-			if t.len > max_u16 {
+			if r.len > max_u16 {
 				return error('exceed max_u16')
 			}
-			mut bol2 := []u8{len: 2}
-			binary.big_endian_put_u16(mut bol2, u16(t.len))
-			out << bol2
+			out << pack_u16item[int](r.len)
 		}
 		3 {
-			if t.len > max_u24 {
+			if r.len > max_u24 {
 				return error('exceed max_u24')
 			}
-			bol3 := u24_from_int(t.len)!
-			out << bol3
+			bol3 := u24_from_int(r.len)!
+			out << bol3.bytes()!
 		}
 		else {
 			return error('invalid length')
 		}
 	}
 	// get the raw bytes item, and append into output
-	out << cb_raw(t)
+	out << r
 
 	return out
 }
 
-// capraw_item tells needed capacities of serializes t prepended with n-bytes length.
+// packlen_raw tells needed capacities of serializes t prepended with n-bytes length.
 @[inline]
-fn capraw_item[T](t T, cb_raw fn (t T) []u8, n int) int {
+fn packlen_raw(r []u8, n int) int {
 	// get the length of underlying payload
-	mut c := cb_raw(t).len
+	mut c := r.len
 	match n {
 		1 { c += 1 }
 		2 { c += 2 }

@@ -3,6 +3,10 @@ module tls13
 import crypto.hmac
 import encoding.binary
 
+// helloretry_magic was special constant used in HelloRetryRequest message but
+// with Random set to the special value of the SHA-256 of "HelloRetryRequest"
+// ie, 	CF 21 AD 74 E5 9A 61 11 BE 1D 8C 02 1E 65 B8 91
+// 		C2 A2 11 16 7A BB 8C 5E 07 9E 09 E2 C8 A8 33 9C
 const helloretry_magic = [u8(0xCF), 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C,
 	0x02, 0x1E, 0x65, 0xB8, 0x91, 0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09,
 	0xE2, 0xC8, 0xA8, 0x33, 0x9C]
@@ -18,8 +22,8 @@ const min_hskmsg_size = 4
 @[noinit]
 struct Handshake {
 mut:
-	// htype u8 value
-	htype HandshakeType
+	// tipe was u8 value
+	tipe HandshakeType
 	// max_u24 lengtb
 	payload []u8
 }
@@ -30,18 +34,18 @@ fn (h Handshake) packed_length() int {
 }
 
 fn (h Handshake) expect_hsk_type(hsktype HandshakeType) bool {
-	return h.htype == hsktype
+	return h.tipe == hsktype
 }
 
 // is_hrr checks whether this handshake message is HelloRetryRequest message.
-// two cases here, first of it, the htype is hello_retry_request type and the second
-// if the htype is .server_hello with random value contains helloretry_magic constant.
+// two cases here, first of it, the tipe is hello_retry_request type and the second
+// if the tipe is .server_hello with random value contains helloretry_magic constant.
 // otherwise, its not HelloRetryRequest message.
 fn (h Handshake) is_hrr() !bool {
-	if h.htype == .hello_retry_request {
+	if h.tipe == .hello_retry_request {
 		return true
 	}
-	if h.htype == .server_hello {
+	if h.tipe == .server_hello {
 		sh := ServerHello.unpack(h.payload)!
 		if sh.is_hrr() {
 			return true
@@ -59,12 +63,12 @@ fn (h Handshake) pack() ![]u8 {
 		return error('Handshake length exceed limit')
 	}
 	mut out := []u8{}
-	htype := h.htype.pack()!
+	tipe := h.tipe.pack()!
 	length := Uint24.from_int(h.length)!
 	bytes_of_length := length.bytes()!
 
 	// writes bytes into out
-	out << htype
+	out << tipe
 	out << bytes_of_length
 	out << h.payload
 
@@ -76,9 +80,9 @@ fn Handshake.unpack(b []u8) !Handshake {
 	if b.len < min_hskmsg_size {
 		return error('Underflow of Handshake bytes')
 	}
-	mut r := Buffer.new(b)!
-	tipe := r.read_u8()!
-	htype := HandshakeType.from_u8(tipe)!
+	mut r := new_buffer(b)!
+	tp := r.read_u8()!
+	tipe := HandshakeType.from_u8(tp)!
 
 	// bytes of length
 	bytes_of_length := r.read_at_least(3)!
@@ -89,7 +93,7 @@ fn Handshake.unpack(b []u8) !Handshake {
 	payload := r.read_at_least(length)!
 	assert payload.len == length
 	out := Handshake{
-		htype:   htype
+		tipe:    tipe
 		length:  length
 		payload: payload
 	}
@@ -107,9 +111,9 @@ fn (hs []Handshake) packed_length() int {
 	return n
 }
 
-// filtered_msg_type filters []Handshake based on provided htype, its maybe null or contains filtered type.
+// filtered_msg_type filters []Handshake based on provided tipe, its maybe null or contains filtered type.
 fn (hs []Handshake) filtered_hsk_with_type(msgtype HandshakeType) []Handshake {
-	return hs.filter(it.htype == msgtype)
+	return hs.filter(it.tipe == msgtype)
 }
 
 // HandshakeList is arrays of handshake messages
@@ -124,7 +128,7 @@ fn unpack_to_multi_handshake(b []u8) ![]Handshake {
 	}
 	mut hs := []Handshake{}
 	mut i := 0
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
 	for i < b.len {
 		mut buf := []u8{}
 		tp := r.read_u8()!
@@ -165,7 +169,7 @@ type HandshakePayload = Certificate
 	| NewSessionTicket
 	| ServerHello
 
-fn (h HandshakePayload) htype() !HandshakeType {
+fn (h HandshakePayload) tipe() !HandshakeType {
 	match h {
 		Certificate { return .certificate }
 		CertificateRequest { return .certificate_request }
@@ -189,12 +193,12 @@ fn (h HandshakePayload) pack_to_handshake_bytes() ![]u8 {
 
 // pack_to_handshake build Handshake message from HandshakePayload
 fn (h HandshakePayload) pack_to_handshake() !Handshake {
-	htype := h.htype()!
+	tipe := h.tipe()!
 	payload := h.pack()!
 	length := payload.len
 
 	hsk := Handshake{
-		htype:   htype
+		tipe:    tipe
 		length:  length
 		payload: payload
 	}
@@ -256,26 +260,30 @@ fn (h HandshakePayload) pack() ![]u8 {
 	}
 }
 
-// Minimal length checked here inculdes minimal of csuites and extensions length
-// Minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
-const min_chello_size = 51
-const min_chello_sessid_size = 32
-const min_chello_random_size = 32
-const min_chello_cmeths_size = 1
-const max_chello_cmeths_size = max_u8
-
 // TLS 1.3 ClientHello handshake message
 //
 // See the spec at 4.1.2.  Client Hello
+//
+// Minimal length checked here inculdes minimal of csuites and xslist length
+// Minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
+//
+const min_chello_size = 51
+const min_chello_random_size = 32
+const max_chello_sessid_size = 32
+const min_chello_cmeths_size = 1
+const max_chello_cmeths_size = max_u8
+
+// ClientHello handshake message
+//
 @[noinit]
 struct ClientHello {
 mut:
-	version    TlsVersion = tls_v12 // TLS v1.2
-	random     []u8          // 32 bytes
-	sessid     []u8          // <0..32>;
-	csuites    []CipherSuite // <2..2^16-2>;
-	cmeths     []u8          // <1..2^8-1>;
-	extensions []Extension   // <8..2^16-1>;
+	version TlsVersion = tls_v12 // TLS v1.2
+	random  []u8          // 32 bytes
+	sessid  []u8          // <0..32>;
+	csuites []CipherSuite // <2..2^16-2>;
+	cmeths  []u8          // <1..2^8-1>;
+	xslist  []Extension   // <8..2^16-1>;
 }
 
 // check_chello validates ClientHello c
@@ -296,7 +304,7 @@ fn check_chello(c ClientHello) ! {
 		return error('invalid compression_method size')
 	}
 	// TODO: check another constrains
-	// extensions<8..2^16-1>;
+	// xslist<8..2^16-1>;
 }
 
 // packlen_chello returns the length of serialized ClientHello c.
@@ -315,10 +323,10 @@ fn packlen_chello(c ClientHello) int {
 	n += cap_u16list_withlen[CipherSuite](c.csuites, 2)
 
 	n += 1 // one byte of length compression_method
-	n += 1 // one byte of compression_method value
+	n += c.cmeths.len // compression_method values
 
 	// extension list with prepended u16-sized length
-	n += packlen_xslist_withlen(c.extensions)
+	n += packlen_xslist_withlen(c.xslist)
 
 	return n
 }
@@ -338,21 +346,22 @@ fn pack_chello(c ClientHello) ![]u8 {
 
 	// encodes ClientHello sessid, prepended with 1-byte length
 	out << u8(c.sessid.len)
-	out << u8(c.sessid)
+	out << c.sessid
 
 	// encodes CipherSuite arrays, prepended with 2-bytes length.
 	out << pack_u16list_withlen[CipherSuite](c.csuites, 2)!
 
 	// encodes ClientHello compression_method arrays with one-byte length
 	out << u8(c.cmeths.len)
-	out << u8(c.cmeths)
+	out << c.cmeths
 
 	// encodes extension list prepended with u16-sized length
-	out << pack_xslist_withlen(c.extensions)!
+	out << pack_xslist_withlen(c.xslist)!
 
 	return out
 }
 
+// parse_chello decodes bytes into ClientHello and validates the result.
 @[direct_array_access; inline]
 fn parse_chello(bytes []u8) !ClientHello {
 	if bytes.len < min_chello_size {
@@ -367,81 +376,43 @@ fn parse_chello(bytes []u8) !ClientHello {
 	random := r.read_at_least(32)!
 
 	// read one-byte sessid length and sessid bytes
-}
+	sid := r.read_u8()!
+	sid_bytes := r.read_at_least(int(sid))!
 
-@[inline]
-fn (ch ClientHello) pack() ![]u8 {
-	// validates
+	// read cipher suites list with prepended 2-bytes length
+	ciphers_len := r.read_u16()!
+	ciphers_data := r.read_at_least(int(ciphers_len))!
+	csuites := parse_u16list[CipherSuite](ciphers_data, new_csuite)!
+
+	// read compression_method length and the contents of compression_method bytes
+	cm := r.read_u8()
+	cmeths := r.read_at_least(int(cm))!
+
+	// read extension list with prepended length
+	xlen := r.read_u16()
+	xs_bytes := r.read_at_least(int(xlen))!
+	xs := parse_xslist(xs_bytes)!
+
+	// build the result
+	ch := ClientHello{
+		version: ver
+		random:  random
+		sessid:  sid_bytes
+		csuites: csuites
+		cmeths:  cmeths
+		xslist:  xs
+	}
+	// validates the result
 	check_chello(ch)!
 
-	mut out := []u8{cap: packlen_chello(ch)}
-
-	out << ch.version.pack()!
-	out << ch.random
-	out << u8(ch.sessid.len)
-	out << ch.sessid
-	out << ch.csuites.pack()!
-	out << u8(0x01)
-	out << ch.cmeths
-	out << ch.extensions.pack()!
-
-	return out
-}
-
-@[direct_array_access; inline]
-fn ClientHello.unpack(b []u8) !ClientHello {
-	if b.len < min_chello_size {
-		return error('Bad ClientHello bytes: underflow ')
-	}
-	mut r := Buffer.new(b)!
-	// version,
-	ver := r.read_u16()!
-	version := TlsVersion.from_u16(ver)!
-	if version != tls_v12 {
-		return error('Bad protocol version: violated')
-	}
-	// random
-	random := r.read_at_least(32)!
-	// sessid
-	legn := r.read_u8()!
-	if legn > 32 {
-		return error('sessid exceed')
-	}
-	legacy := r.read_at_least(int(legn))!
-
-	// read ciphersuites length + underlying arrays
-	ciphers_len := r.peek_u16()!
-	ciphers_data := r.read_at_least(int(ciphers_len) + 2)!
-	ciphers := CipherSuiteList.unpack(ciphers_data)!
-
-	// read commpression method, should one byte length
-	cm := r.read_u8()!
-	if cm != u8(0x01) {
-		return error('Bad compression_method length')
-	}
-	cmethsd := r.read_u8()!
-
-	// read remianing bytes extension list
-	exts_len := r.peek_u16()!
-	exts_bytes := r.read_at_least(int(exts_len) + 2)!
-	extensions := ExtensionList.unpack(exts_bytes)!
-
-	ch := ClientHello{
-		version:    version
-		random:     random
-		sessid:     legacy
-		csuites:    ciphers
-		cmeths:     cmethsd
-		extensions: extensions
-	}
 	return ch
 }
 
 // parse_server_hello parse ServerHello with associated ClientHello
 fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	// A client which receives a cipher suite that was not offered MUST abort the handshake
-	if !ch.csuites.is_exist(sh.cipher_suite) {
-		return error("ClientHello.csuites doesn't contains server cipher_suite")
+	if !ch.csuites.is_exist(sh.csuite) {
+		return error("ClientHello.csuites doesn't contains server csuite")
 	}
 	// TLS 1.3 clients receiving a ServerHello indicating TLS 1.2 or below
 	// MUST check that the last 8 bytes are not equal to either of these values.
@@ -452,18 +423,18 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	if hmac.equal(last8, tls12_random_magic) || hmac.equal(last8, tls12_random_magic) {
 		return error('Bad downgrade ServerHello.random detected')
 	}
-	// A client which receives a lgc_sessid_echo field that does not match what it sent
+	// A client which receives a sessid field that does not match what it sent
 	// in the ClientHello MUST abort the handshake with an "illegal_parameter" alert.
-	if !hmac.equal(ch.sessid, sh.lgc_sessid_echo) {
+	if !hmac.equal(ch.sessid, sh.sessid) {
 		return error("Server and Client sessid doesn't match")
 	}
 	// If the "supported_versions" extension in the ServerHello contains a version not offered
 	// by the client or contains a version prior to TLS 1.3, the client MUST abort
 	// the handshake with an "illegal_parameter" alert.
-	contains_spv := sh.extensions.any(it.tipe == .supported_versions)
+	contains_spv := sh.xslist.any(it.tipe == .supported_versions)
 	if contains_spv {
-		server_spv := sh.extensions.map(it.tipe == .supported_versions)
-		client_spv := ch.extensions.map(it.tipe == .supported_versions)
+		server_spv := sh.xslist.map(it.tipe == .supported_versions)
+		client_spv := ch.xslist.map(it.tipe == .supported_versions)
 		if server_spv != client_spv {
 			return error("Server and Client SupportedVersion doesn't match")
 		}
@@ -471,155 +442,177 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	return true
 }
 
-const min_serverhello_size = 46
-
-// ServerHello
+// TLS 1.3 ServerHello handshake message
 //
+const min_shello_size = 46
+
+// 4.1.3.  Server Hello
+//
+@[noinit]
 struct ServerHello {
 mut:
-	version         TlsVersion = tls_v12
-	random          []u8
-	lgc_sessid_echo []u8 // <0..32>;
-	cipher_suite    CipherSuite
-	cmeths          u8 = 0x00
-	extensions      []Extension // <6..2^16-1>;
+	version TlsVersion = tls_v12
+	random  []u8
+	sessid  []u8 // <0..32>;
+	// choosen cipher suite
+	csuite CipherSuite
+	// choosen compression method
+	cmeth  u8 = 0x00
+	xslist []Extension // <6..2^16-1>;
 }
 
-@[direct_array_access; inline]
-fn (sh ServerHello) packed_length() int {
-	mut n := 0
+@[inline]
+fn check_shello(s ServerHello) ! {
+	return error('TODO')
+}
 
+// packlen_shello return the length of serialized ServerHello s
+@[inline]
+fn packlen_shello(s ServerHello) int {
+	mut n := 0
+	// 2-bytes of TlsVersion
 	n += 2
+	// 32-bytes of random
 	n += 32
+	// 1-byte of sessid.len plus sessid.len
+	n += sessid.len + 1
+	// 2-bytes ciphersuite
+	n += 2
+	// 1-byte compression_method
 	n += 1
-	n += sh.lgc_sessid_echo.len
-	n += sh.cipher_suite.packed_length()
-	n += 1 // compression_method
-	n += sh.extensions.packed_length()
+	// extension list with prepended 2-bytes length
+	n += packlen_xslist_withlen(s.xslist)
 
 	return n
 }
 
-@[direct_array_access; inline]
-fn (sh ServerHello) pack() ![]u8 {
-	// we do early simple check of validity.
-	if sh.random.len != 32 {
-		return error('Bad random length')
-	}
-	if sh.lgc_sessid_echo.len > 32 {
-		return error('Bad lgc_sessid_echo length')
-	}
-	mut out := []u8{}
+// pack_shello encodes ServerHello s into bytes array.
+@[inline]
+fn pack_shello(s ServerHello) ![]u8 {
+	check_shello(s)!
+	mut out := []u8{cap: packlen_shello(s)}
 
-	out << sh.version.pack()!
-	out << sh.random
-	out << u8(sh.lgc_sessid_echo.len)
-	out << sh.lgc_sessid_echo
-	out << sh.cipher_suite.pack()!
-	out << sh.cmeths
-	out << sh.extensions.pack()!
+	// encodes version, its an u16 value
+	out << pack_u16item[TlsVersion](s.version)
+
+	// encodes 32-bytes of ServerHello random
+	out << c.random
+
+	// encodes ServerHello sessid, prepended with 1-byte length
+	out << u8(c.sessid.len)
+	out << c.sessid
+
+	// encodes choosen CipherSuite, its an u16-based value
+	out << pack_u16item[CipherSuite](s.csuite)
+
+	// encodes 1-byte ServerHello compression_method
+	out << c.cmeths
+
+	// encodes extension list prepended with u16-sized length
+	out << pack_xslist_withlen(c.xslist)!
 
 	return out
 }
 
-@[direct_array_access; inline]
-fn ServerHello.unpack(b []u8) !ServerHello {
-	// min = 2 + 32 + 1 + 0 + 2 + 1 + 2 + 6
-	if b.len < min_serverhello_size {
-		return error('Bad ServerHello bytes: underflow')
+// parse_shello decodes bytes array into ServerHello and validates them.
+@[direct_array_access]
+fn parse_shello(bytes []u8) !ServerHello {
+	if bytes.len < min_shello_size {
+		return error('underflow ServerHello bytes')
 	}
-	mut r := Buffer.new(b)!
-	// version
-	ver := r.read_u16()!
-	version := TlsVersion.from_u16(ver)!
-	if version != tls_v12 {
-		return error('Bad TlsVersion version')
-	}
+	mut r := new_buffer(bytes)!
+	// read 2-bytes version
+	val := r.read_u16()
+	ver := new_tlsversion(val)!
+
+	// read 32-bytes of random bytes
 	random := r.read_at_least(32)!
-	// lgc_sessid_echo
-	s := r.read_u8()!
-	if s > 32 {
-		return error('Bad lgc_sessid_echo length')
-	}
-	sessid := r.read_at_least(int(s))!
-	cp := r.read_at_least(2)!
-	cipher := CipherSuite.unpack(cp)!
-	comp_meth := r.read_u8()!
 
-	// read remianing bytes extension list
-	exts_ln := r.peek_u16()!
-	exts_bytes := r.read_at_least(int(exts_ln) + 2)!
-	extensions := ExtensionList.unpack(exts_bytes)!
+	// read 1-byte sessid length and sessid bytes
+	sid := r.read_u8()!
+	sid_bytes := r.read_at_least(int(sid))!
 
+	// read 2-bytes ciphersuite
+	cs := r.read_u16()!
+	csuite := new_csuite(cs)!
+
+	// read 1-byte compression_method
+	cmeth := r.read_u8()!
+
+	// read extension list with prepended length
+	xlen := r.read_u16()
+	xs_bytes := r.read_at_least(int(xlen))!
+	xs := parse_xslist(xs_bytes)!
+
+	// build ServerHello message
 	sh := ServerHello{
-		version:         version
-		random:          random
-		lgc_sessid_echo: sessid
-		cipher_suite:    cipher
-		cmeths:          comp_meth
-		extensions:      extensions
+		version: ver
+		random:  random
+		sessid:  sid_bytes
+		csuite:  csuite
+		cmeth:   cmeth
+		xslist:  xs
 	}
+	// validates
+	check_shello(sh)!
+
 	return sh
 }
 
+// is_hrr check whether this ServerHello is a HelloRetryRequest message
+@[inline]
 fn (sh ServerHello) is_hrr() bool {
 	return hmac.equal(sh.random, helloretry_magic)
 }
 
+// 4.5.  End of Early Data
+// See https://datatracker.ietf.org/doc/html/rfc8446#section-4.5
+//
 struct EndOfEarlyData {}
 
-fn (eo EndOfEarlyData) pack() ![]u8 {
-	out := []u8{}
-	return out
+@[inline]
+fn pack_eod(e EndOfEarlyData) []u8 {
+	return []u8{}
 }
 
-fn (mut eo EndOfEarlyData) unpack(b []u8) !EndOfEarlyData {
-	return eo
+@[inline]
+fn parse_eod(bytes []u8) EndOfEarlyData {
+	return EndOfEarlyData{}
 }
 
+@[noinit]
 struct EncryptedExtensions {
-	extensions []Extension // <0..2^16-1>
-}
-
-fn (ee EncryptedExtensions) pack() ![]u8 {
-	out := ee.extensions.pack()!
-	return out
-}
-
-fn EncryptedExtensions.unpack(b []u8) !EncryptedExtensions {
-	exts := ExtensionList.unpack(b)!
-	ee := EncryptedExtensions{
-		extensions: exts
-	}
-	return ee
+mut:
+	xslist []Extension // <0..2^16-1>
 }
 
 // B.3.2.  Server Parameters Messages
 // CertificateRequest handling
 struct CertificateRequest {
-	crq_ctx    []u8        // <0..2^8-1>;
-	extensions []Extension // <2..2^16-1>;
+mut:
+	context []u8        // <0..2^8-1>;
+	xslist  []Extension // <2..2^16-1>;
 }
 
 fn (cr CertificateRequest) packed_length() int {
 	mut n := 0
 	n += 1
-	n += cr.crq_ctx.len
-	n += cr.extensions.packed_length()
+	n += cr.context.len
+	n += cr.xslist.packed_length()
 
 	return n
 }
 
 fn (cr CertificateRequest) pack() ![]u8 {
-	if cr.crq_ctx.len > max_u8 {
+	if cr.context.len > max_u8 {
 		return error('certreq context len exceed')
 	}
 	mut out := []u8{}
-	exts_data := cr.extensions.pack()!
+	exts_data := cr.xslist.pack()!
 
 	// writes out CertificateRequest data into output buffer
-	out << u8(cr.crq_ctx.len)
-	out << cr.crq_ctx
+	out << u8(cr.context.len)
+	out << cr.context
 	out << exts_data
 
 	return out
@@ -629,7 +622,7 @@ fn CertificateRequest.unpack(b []u8) !CertificateRequest {
 	if b.len < 3 {
 		return error('bad CertificateRequest bytes')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
 	crctx_len := r.read_u8()!
 	crctx := r.read_at_least(int(crctx_len))!
 	exts_len := r.peek_u16()!
@@ -637,8 +630,8 @@ fn CertificateRequest.unpack(b []u8) !CertificateRequest {
 	exts := ExtensionList.unpack(exts_bytes)!
 
 	cr := CertificateRequest{
-		crq_ctx:    crctx
-		extensions: exts
+		context: crctx
+		xslist:  exts
 	}
 	return cr
 }
@@ -680,37 +673,39 @@ fn CertificateType.unpack(b []u8) !CertificateType {
 
 const max_certentry_data_size = max_u24 // 1 << 24 - 1
 
+@[noinit]
 struct CertificateEntry {
-	cert_type  CertificateType // u8
-	cert_data  []u8            //<1..2^24-1>;
-	extensions []Extension     //<0..2^16-1>;
+mut:
+	cetipe CertificateType // u8
+	cedata []u8            //<1..2^24-1>;
+	xslist []Extension     //<0..2^16-1>;
 }
 
 fn (ce CertificateEntry) packed_length() int {
 	mut n := 0
-	n += 1 // cert_type
-	n += 3 // ce.cert_data.len
-	n += ce.cert_data.len
-	n += ce.extensions.packed_length()
+	n += 1 // cetipe
+	n += 3 // ce.cedata.len
+	n += ce.cedata.len
+	n += ce.xslist.packed_length()
 
 	return n
 }
 
 @[direct_array_access; inline]
 fn (ce CertificateEntry) pack() ![]u8 {
-	match ce.cert_type {
+	match ce.cetipe {
 		.x509, .raw_public_key {
 			// FIXME: is it should handle differently?
-			if ce.cert_data.len > max_certentry_data_size {
+			if ce.cedata.len > max_certentry_data_size {
 				return error('Certificate data exceed')
 			}
-			cert_length := Uint24.from_int(ce.cert_data.len)!
+			cert_length := Uint24.from_int(ce.cedata.len)!
 			cert_bytes_length := cert_length.bytes()!
 
-			exts := ce.extensions.pack()!
+			exts := ce.xslist.pack()!
 			mut out := []u8{}
 			out << cert_bytes_length
-			out << ce.cert_data
+			out << ce.cedata
 			out << exts
 
 			return out
@@ -726,24 +721,24 @@ fn CertificateEntry.unpack(b []u8) !CertificateEntry {
 	if b.len < 5 {
 		return error('Bad CertificateEntry bytes: underflow')
 	}
-	mut r := Buffer.new(b)!
-	// read 3 bytes length of cert_data
+	mut r := new_buffer(b)!
+	// read 3 bytes length of cedata
 	bytes_length := r.read_at_least(3)!
 	val := Uint24.from_bytes(bytes_length)!
 	length := int(val)
 	if length > max_certentry_data_size {
-		return error('CertificateEntry.cert_data exceed')
+		return error('CertificateEntry.cedata exceed')
 	}
-	cert_data := r.read_at_least(length)!
+	cedata := r.read_at_least(length)!
 
-	// read extensions
+	// read xslist
 	exts_length := r.peek_u16()!
 	exts_data := r.read_at_least(int(exts_length) + 2)!
 	exts := ExtensionList.unpack(exts_data)!
 
 	ce := CertificateEntry{
-		cert_data:  cert_data
-		extensions: exts
+		cedata: cedata
+		xslist: exts
 	}
 	return ce
 }
@@ -783,7 +778,7 @@ fn CertificateEntryList.unpack(b []u8) !CertificateEntryList {
 	if b.len < 3 {
 		return error('CertificateEntryList bytes underflow')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
 
 	// read 3 bytes of length
 	bytes_of_length := r.read_at_least(3)!
@@ -812,15 +807,15 @@ const min_certificate_msg_size = 4
 // https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.2
 //
 struct Certificate {
-	cert_req_ctx []u8               // <0..2^8-1>;
-	cert_list    []CertificateEntry // <0..2^24-1>;
+	context  []u8               // <0..2^8-1>;
+	certlist []CertificateEntry // <0..2^24-1>;
 }
 
 fn (c Certificate) packed_length() int {
 	mut n := 0
 	n += 1
-	n += c.cert_req_ctx.len
-	n += c.cert_list.packed_length()
+	n += c.context.len
+	n += c.certlist.packed_length()
 
 	return n
 }
@@ -829,16 +824,16 @@ fn (c Certificate) packed_length() int {
 fn (c Certificate) pack() ![]u8 {
 	mut out := []u8{}
 
-	if c.cert_req_ctx.len > max_u8 {
-		return error('Bad cert_req_ctx length: overflow')
+	if c.context.len > max_u8 {
+		return error('Bad context length: overflow')
 	}
 	// writes certificate request context
-	out << u8(c.cert_req_ctx.len)
-	out << c.cert_req_ctx
+	out << u8(c.context.len)
+	out << c.context
 
 	// writes certificates list
-	cert_list := c.cert_list.pack()!
-	out << cert_list
+	certlist := c.certlist.pack()!
+	out << certlist
 
 	return out
 }
@@ -848,8 +843,8 @@ fn Certificate.unpack(b []u8) !Certificate {
 	if b.len < min_certificate_msg_size {
 		return error('Bad Certificate bytes: underflow')
 	}
-	mut r := Buffer.new(b)!
-	// read cert_req_ctx
+	mut r := new_buffer(b)!
+	// read context
 	cr := r.read_u8()!
 	creq := r.read_at_least(int(cr))!
 
@@ -859,54 +854,52 @@ fn Certificate.unpack(b []u8) !Certificate {
 	length := int(val)
 
 	certlist_payload := r.read_at_least(length + 3)!
-	cert_list := CertificateEntryList.unpack(certlist_payload)!
+	certlist := CertificateEntryList.unpack(certlist_payload)!
 
 	cert := Certificate{
-		cert_req_ctx: creq
-		cert_list:    cert_list
+		context:  creq
+		certlist: certlist
 	}
 	return cert
 }
 
-const min_certverify_msg_size = 4
-
 // 4.4.3.  Certificate Verify
 // https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.3
 //
+const min_certverify_size = 4
+
+@[noinit]
 struct CertificateVerify {
+mut:
 	algorithm SignatureScheme // u16
 	signature []u8            // <0..2^16-1>;
 }
 
 @[inline]
-fn (cv CertificateVerify) packed_length() int {
-	return 4 + cv.signature.len
+fn packlen_certverify(cv CertificateVerify) int {
+	return min_certverify_size + cv.signature.len
 }
 
-@[direct_array_access; inline]
-fn (cv CertificateVerify) pack() ![]u8 {
-	if cv.signature.len > max_u16 {
-		return error('CertificateVerify.signature exceed')
-	}
-	mut out := []u8{}
-	mut siglen := []u8{len: 2}
-	binary.big_endian_put_u16(mut siglen, u16(cv.signature.len))
+fn (c CertificateVerify) check_cv() ! {}
 
-	out << cv.algorithm.pack()!
-	out << siglen
-	out << cv.signature
+@[direct_array_access; inline]
+fn pack_certverify(cv CertificateVerify) ![]u8 {
+	cv.check()!
+	mut out := []u8{cap: packlen_certverify(cv)}
+	out << pack_u16item[SignatureScheme](cv.algorithm)
+	out << pack_raw_withlen(cv.signature, 2)!
 
 	return out
 }
 
 @[direct_array_access; inline]
-fn CertificateVerify.unpack(b []u8) !CertificateVerify {
-	if b.len < min_certverify_msg_size {
+fn parse_certverify(b []u8) !CertificateVerify {
+	if b.len < min_certverify_size {
 		return error('Bad CertificateVerify bytes: underflow')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
 	alg := r.read_u16()!
-	algorithm := SignatureScheme.from_u16(alg)!
+	algorithm := new_sigscheme(alg)!
 
 	// signature
 	slen := r.read_u16()!
@@ -916,10 +909,14 @@ fn CertificateVerify.unpack(b []u8) !CertificateVerify {
 		algorithm: algorithm
 		signature: signature
 	}
+	cv.check_cv()!
+
 	return cv
 }
 
+@[noinit]
 struct Finished {
+mut:
 	verify_data []u8 // [Hash.length]
 }
 
@@ -940,7 +937,9 @@ fn Finished.unpack(b []u8) !Finished {
 	return fin
 }
 
-const min_newsessionticket_size = 13
+// 4.6.1.  New Session Ticket Message
+//
+const min_nst_size = 13
 
 // NewSessionTicket
 //
@@ -949,93 +948,112 @@ const min_newsessionticket_size = 13
 //          uint32 ticket_age_add;
 //          opaque ticket_nonce<0..255>;
 //          opaque ticket<1..2^16-1>;
-//          Extension extensions<0..2^16-2>;
+//          Extension xslist<0..2^16-2>;
 //      } NewSessionTicket;
+//
+@[noinit]
 struct NewSessionTicket {
-	tkt_lifetime u32
-	tkt_ageadd   u32
-	tkt_nonce    []u8 // u8
-	ticket       []u8 // u16
-	extensions   []Extension
+mut:
+	lifetime u32
+	ageadd   u32
+	nonce    []u8 // u8
+	ticket   []u8 // u16
+	xslist   []Extension
 }
 
-fn (st NewSessionTicket) packed_length() int {
+@[inline]
+fn packlen_nst(st NewSessionTicket) int {
 	mut n := 0
 	n += 8 // ticket lifetime + ageadd
+	// 1-byte nonce.len and the nonce
 	n += 1
-	n += st.tkt_nonce.len
+	n += st.nonce.len
+	// 2-bytes ticket.len and the ticket
 	n += 2
 	n += st.ticket.len
-	n += st.extensions.packed_length()
+	// extension list with prepended 2-bytes length
+	n += packlen_xslist_withlen(st.xslist)
 
 	return n
 }
 
+// check_nst does basic validation on NewSessionTicket message st
+@[inline]
+fn (st NewSessionTicket) check_nst() ! {
+	return error('TODO')
+}
+
+// pack_nst encodes NewSessionTicket message st into bytes array.
 @[direct_array_access; inline]
-fn (st NewSessionTicket) pack() ![]u8 {
-	mut out := []u8{}
-	mut tkt := []u8{len: 8}
-	binary.big_endian_put_u32(mut tkt[0..4], st.tkt_lifetime)
-	binary.big_endian_put_u32(mut tkt[4..8], st.tkt_ageadd)
-	out << tkt
-	if st.tkt_nonce.len > 255 {
-		return error('bad tkt_nonce.len')
-	}
-	if st.ticket.len > 1 << 16 - 1 {
-		return error('bad ticket.len')
-	}
-	out << u8(st.tkt_nonce.len)
-	out << st.tkt_nonce
-	mut t := []u8{len: 2}
-	binary.big_endian_put_u16(mut t, u16(st.ticket.len))
-	out << t
+fn pack_nst(st NewSessionTicket) ![]u8 {
+	st.check_nst()!
+	mut out := []u8{cap: packlen_nst(st)}
+
+	// encodes lifetime + ageadd
+	mut plus2 := []u8{len: 8}
+	binary.big_endian_put_u32(mut plus2[0..4], st.lifetime)
+	binary.big_endian_put_u32(mut plus2[4..8], st.ageadd)
+	out << plus2
+
+	out << u8(st.nonce.len)
+	out << st.nonce
+
+	mut tkt_len := []u8{len: 2}
+	binary.big_endian_put_u16(mut tkt_len, u16(st.ticket.len))
+	out << ttkt_len
 	out << st.ticket
-	out << st.extensions.pack()!
+
+	// encodes extension list with their length
+	out << pack_xslist_withlen(st.xslist)!
 
 	return out
 }
 
+// parse_nst decodes bytes array into NewSessionTicket message and validates them.
 @[direct_array_access; inline]
-fn NewSessionTicket.unpack(b []u8) !NewSessionTicket {
-	if b.len < min_newsessionticket_size {
+fn parse_nst(b []u8) !NewSessionTicket {
+	if b.len < min_nst_size {
 		return error('NewSessionTicket bytes underflow')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
 	lifetime := r.read_u32()!
 	ageadd := r.read_u32()!
 	nonce_len := r.read_u8()!
-	tkt_nonce := r.read_at_least(int(nonce_len))!
+	nonce := r.read_at_least(int(nonce_len))!
 	tkt_len := r.read_u16()!
 	ticket := r.read_at_least(int(tkt_len))!
 
-	// read extensions
-	exts_length := r.peek_u16()!
-	exts_data := r.read_at_least(int(exts_length) + 2)!
-	exts := ExtensionList.unpack(exts_data)!
+	// read extension list with prepended length
+	xlen := r.read_u16()
+	xs_bytes := r.read_at_least(int(xlen))!
+	xs := parse_xslist(xs_bytes)!
 
 	st := NewSessionTicket{
-		tkt_lifetime: lifetime
-		tkt_ageadd:   ageadd
-		tkt_nonce:    tkt_nonce
-		ticket:       ticket
-		extensions:   exts
+		lifetime: lifetime
+		ageadd:   ageadd
+		nonce:    nonce
+		ticket:   ticket
+		xslist:   xs
 	}
+	// check
+	st.check_nst()!
+
 	return st
 }
 
 // KeyUpdate
 // KeyUpdateRequest = u8
 enum KeyUpdateRequest as u8 {
-	update_not_requested = 0
-	update_requested     = 1
+	not_requested = 0
+	was_requested = 1
 	// 255
 }
 
 @[inline]
 fn KeyUpdateRequest.from_u8(val u8) !KeyUpdateRequest {
 	match val {
-		0 { return .update_not_requested }
-		1 { return .update_requested }
+		0 { return .not_requested }
+		1 { return .was_requested }
 		else { return error('unsupported KeyUpdateRequest value') }
 	}
 }
