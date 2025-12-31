@@ -54,12 +54,12 @@ fn tlsversion_parse(b []u8) !TlsVersion {
 		return error('Bad TlsVersion buffer len')
 	}
 	v := binary.big_endian_u16(b)
-	return tlsversion_from_u16(v)!
+	return new_tlsversion(v)!
 }
 
-// tlsversion_from_u16 creates TLS version from u16 value
+// new_tlsversion creates TLS version from u16 value
 @[inline]
-fn tlsversion_from_u16(val u16) !TlsVersion {
+fn new_tlsversion(val u16) !TlsVersion {
 	match val {
 		u16(0x0300) {
 			return tls_v00

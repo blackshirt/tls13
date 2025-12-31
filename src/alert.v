@@ -26,60 +26,6 @@ fn AlertLevel.unpack(b []u8) !AlertLevel {
 }
 
 @[inline]
-fn AlertLevel.from_u8(val u8) !AlertLevel {
-	match val {
-		0x01 { return .warning }
-		0x02 { return .fatal }
-		else { return error('unsupported alert level') }
-	}
-}
-
-@[inline]
-fn (al AlertLevel) str() string {
-	match al {
-		.warning { return 'WARNING' }
-		.fatal { return 'FATAL' }
-	}
-}
-
-enum AlertDescription as u8 {
-	close_notify                    = 0
-	unexpected_message              = 10
-	bad_record_mac                  = 20
-	decryption_failed               = 21 // _RESERVED
-	record_overflow                 = 22
-	decompression_failure           = 30 // _RESERVED
-	handshake_failure               = 40
-	no_certificate                  = 41 // RESERVED
-	bad_certificate                 = 42
-	unsupported_certificate         = 43
-	certificate_revoked             = 44
-	certificate_expired             = 45
-	certificate_unknown             = 46
-	illegal_parameter               = 47
-	unknown_ca                      = 48
-	access_denied                   = 49
-	decode_error                    = 50
-	decrypt_error                   = 51
-	export_restriction              = 60 //_RESERVED
-	protocol_version                = 70
-	insufficient_security           = 71
-	internal_error                  = 80
-	inappropriate_fallback          = 86
-	user_canceled                   = 90
-	no_renegotiation                = 100 //_RESERVED
-	missing_extension               = 109
-	unsupported_extension           = 110
-	certificate_unobtainable        = 111 //_RESERVED
-	unrecognized_name               = 112
-	bad_certificate_status_response = 113
-	bad_certificate_hash_value      = 114 //_RESERVED
-	unknown_psk_identity            = 115
-	certificate_required            = 116
-	no_application_protocol         = 120
-}
-
-@[inline]
 fn (ad AlertDescription) pack() ![]u8 {
 	if u8(ad) > max_u8 {
 		return error('AlertDescription exceed limit')
@@ -93,47 +39,6 @@ fn AlertDescription.unpack(b []u8) !AlertDescription {
 		return error('b.len != 1 for AlertDescription')
 	}
 	return AlertDescription.from_u8(b[0])!
-}
-
-@[inline]
-fn AlertDescription.from_u8(val u8) !AlertDescription {
-	match val {
-		0 { return .close_notify }
-		10 { return .unexpected_message }
-		20 { return .bad_record_mac }
-		21 { return .decryption_failed } // _RESERVED
-		22 { return .record_overflow }
-		30 { return .decompression_failure } // _RESERVED
-		40 { return .handshake_failure }
-		41 { return .no_certificate } // RESERVED
-		42 { return .bad_certificate }
-		43 { return .unsupported_certificate }
-		44 { return .certificate_revoked }
-		45 { return .certificate_expired }
-		46 { return .certificate_unknown }
-		47 { return .illegal_parameter }
-		48 { return .unknown_ca }
-		49 { return .access_denied }
-		50 { return .decode_error }
-		51 { return .decrypt_error }
-		60 { return .export_restriction } //_RESERVED
-		70 { return .protocol_version }
-		71 { return .insufficient_security }
-		80 { return .internal_error }
-		86 { return .inappropriate_fallback }
-		90 { return .user_canceled }
-		100 { return .no_renegotiation } //_RESERVED
-		109 { return .missing_extension }
-		110 { return .unsupported_extension }
-		111 { return .certificate_unobtainable } //_RESERVED
-		112 { return .unrecognized_name }
-		113 { return .bad_certificate_status_response }
-		114 { return .bad_certificate_hash_value } //_RESERVED
-		115 { return .unknown_psk_identity }
-		116 { return .certificate_required }
-		120 { return .no_application_protocol }
-		else { return error('unsupported AlertDescription value') }
-	}
 }
 
 struct Alert {
