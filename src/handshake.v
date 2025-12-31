@@ -258,8 +258,15 @@ fn (h HandshakePayload) pack() ![]u8 {
 
 // Minimal length checked here inculdes minimal of csuites and extensions length
 // Minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
-const min_clienthello_size = 51
+const min_chello_size = 51
+const min_chello_sessid_size = 32
+const min_chello_random_size = 32
+const min_chello_cmeths_size = 1
+const max_chello_cmeths_size = max_u8
 
+// TLS 1.3 ClientHello handshake message
+//
+// See the spec at 4.1.2.  Client Hello
 @[noinit]
 struct ClientHello {
 mut:
@@ -267,33 +274,107 @@ mut:
 	random     []u8          // 32 bytes
 	sessid     []u8          // <0..32>;
 	csuites    []CipherSuite // <2..2^16-2>;
-	cmpmeth    u8            //<1..2^8-1>;
+	cmeths     []u8          // <1..2^8-1>;
 	extensions []Extension   // <8..2^16-1>;
 }
 
-fn (ch ClientHello) packed_length() int {
+// check_chello validates ClientHello c
+@[inline]
+fn check_chello(c ClientHello) ! {
+	// TODO: should ClientHello version == TLS 1.2 ?
+	if c.sessid.len > 32 {
+		return error('Session id length exceed')
+	}
+	if c.random.len != 32 {
+		return error('Bad random length')
+	}
+	// non-null ciphersuites
+	if c.csuites.len < 1 {
+		return error('null-length of ciphersuites was not allowed')
+	}
+	if c.cmeths.len < min_chello_cmeths_size || c.cmeths.len > max_chello_cmeths_size {
+		return error('invalid compression_method size')
+	}
+	// TODO: check another constrains
+	// extensions<8..2^16-1>;
+}
+
+// packlen_chello returns the length of serialized ClientHello c.
+@[inline]
+fn packlen_chello(c ClientHello) int {
 	mut n := 0
-	n += 2 // TlsVersion
-	n += 32 // 32 bytes of random
-	n += 1 // one byte of sessid.len
+	// u16-sized TlsVersion
+	n += 2
+	// 32 bytes of random
+	n += 32
+	// one byte of sessid.len and sessid
+	n += 1
 	n += ch.sessid.len
-	n += ch.csuites.packed_length()
+
+	// Arrays of ciphersuite was prepended by u16-sized length
+	n += cap_u16list_withlen[CipherSuite](c.csuites, 2)
+
 	n += 1 // one byte of length compression_method
-	n += 1 // one byte compression_method
-	n += ch.extensions.packed_length()
+	n += 1 // one byte of compression_method value
+
+	// extension list with prepended u16-sized length
+	n += packlen_xslist_withlen(c.extensions)
 
 	return n
 }
 
+// pack_chello encodes ClientHello c into bytes array
+@[inline]
+fn pack_chello(c ClientHello) ![]u8 {
+	// validates ClientHello and setup output buffer
+	check_chello(c)!
+	mut out := []u8{cap: packlen_chello(c)}
+
+	// encodes ClientHello version, its an u16 value
+	out << pack_u16item[TlsVersion](c.version)
+
+	// encodes ClientHello random bytes
+	out << c.random
+
+	// encodes ClientHello sessid, prepended with 1-byte length
+	out << u8(c.sessid.len)
+	out << u8(c.sessid)
+
+	// encodes CipherSuite arrays, prepended with 2-bytes length.
+	out << pack_u16list_withlen[CipherSuite](c.csuites, 2)!
+
+	// encodes ClientHello compression_method arrays with one-byte length
+	out << u8(c.cmeths.len)
+	out << u8(c.cmeths)
+
+	// encodes extension list prepended with u16-sized length
+	out << pack_xslist_withlen(c.extensions)!
+
+	return out
+}
+
+@[direct_array_access; inline]
+fn parse_chello(bytes []u8) !ClientHello {
+	if bytes.len < min_chello_size {
+		return error('underflow client hello bytes')
+	}
+	mut r := new_buffer(bytes)!
+	// read two-bytes version
+	val := r.read_u16()
+	ver := new_tlsversion(val)!
+
+	// read 32-bytes of random bytes
+	random := r.read_at_least(32)!
+
+	// read one-byte sessid length and sessid bytes
+}
+
 @[inline]
 fn (ch ClientHello) pack() ![]u8 {
-	if ch.sessid.len > 32 {
-		return error('Session id length exceed')
-	}
-	if ch.random.len != 32 {
-		return error('Bad random length')
-	}
-	mut out := []u8{}
+	// validates
+	check_chello(ch)!
+
+	mut out := []u8{cap: packlen_chello(ch)}
 
 	out << ch.version.pack()!
 	out << ch.random
@@ -301,7 +382,7 @@ fn (ch ClientHello) pack() ![]u8 {
 	out << ch.sessid
 	out << ch.csuites.pack()!
 	out << u8(0x01)
-	out << ch.cmpmeth
+	out << ch.cmeths
 	out << ch.extensions.pack()!
 
 	return out
@@ -309,7 +390,7 @@ fn (ch ClientHello) pack() ![]u8 {
 
 @[direct_array_access; inline]
 fn ClientHello.unpack(b []u8) !ClientHello {
-	if b.len < min_clienthello_size {
+	if b.len < min_chello_size {
 		return error('Bad ClientHello bytes: underflow ')
 	}
 	mut r := Buffer.new(b)!
@@ -338,7 +419,7 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	if cm != u8(0x01) {
 		return error('Bad compression_method length')
 	}
-	cmethd := r.read_u8()!
+	cmethsd := r.read_u8()!
 
 	// read remianing bytes extension list
 	exts_len := r.peek_u16()!
@@ -350,7 +431,7 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 		random:     random
 		sessid:     legacy
 		csuites:    ciphers
-		cmpmeth:    cmethd
+		cmeths:     cmethsd
 		extensions: extensions
 	}
 	return ch
@@ -400,7 +481,7 @@ mut:
 	random          []u8
 	lgc_sessid_echo []u8 // <0..32>;
 	cipher_suite    CipherSuite
-	cmpmeth         u8 = 0x00
+	cmeths          u8 = 0x00
 	extensions      []Extension // <6..2^16-1>;
 }
 
@@ -435,7 +516,7 @@ fn (sh ServerHello) pack() ![]u8 {
 	out << u8(sh.lgc_sessid_echo.len)
 	out << sh.lgc_sessid_echo
 	out << sh.cipher_suite.pack()!
-	out << sh.cmpmeth
+	out << sh.cmeths
 	out << sh.extensions.pack()!
 
 	return out
@@ -475,7 +556,7 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 		random:          random
 		lgc_sessid_echo: sessid
 		cipher_suite:    cipher
-		cmpmeth:         comp_meth
+		cmeths:          comp_meth
 		extensions:      extensions
 	}
 	return sh

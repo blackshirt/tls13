@@ -22,10 +22,10 @@ fn pack_u8list[T](ts []T) []u8 {
 	return out
 }
 
-// pack_u8list_with_len encodes array of u8-sized opaque in ts into bytes array
+// pack_u8list_withlen encodes array of u8-sized opaque in ts into bytes array
 // prepended with their length specified in n.
 @[direct_array_access]
-fn pack_u8list_with_len[T](ts []T, n int) ![]u8 {
+fn pack_u8list_withlen[T](ts []T, n int) ![]u8 {
 	c := cap_u8list[T](ts, n)
 	mut out := []u8{cap: c}
 	match n {
@@ -99,12 +99,12 @@ fn pack_u16list[T](ts []T) []u8 {
 	return out
 }
 
-// pack_u16list_with_len encodes the array of item T in ts prepended with n-byte(s) length into bytes array.
+// pack_u16list_withlen encodes the array of item T in ts prepended with n-byte(s) length into bytes array.
 // Its only supports with 1 or 2 bytes-length, otherwise returns an error.
 @[direct_array_access]
-fn pack_u16list_with_len[T](ts []T, n int) ![]u8 {
+fn pack_u16list_withlen[T](ts []T, n int) ![]u8 {
 	// get the bytes capacities for the output length
-	c := cap_u16list_with_len[T](ts, n)
+	c := cap_u16list_withlen[T](ts, n)
 	mut out := []u8{cap: c}
 	match n {
 		1 {
@@ -178,10 +178,10 @@ fn parse_u16list[T](bytes []u8, cb_make fn (u16) !T) ![]T {
 	return items
 }
 
-// parse_u16list_with_len decodes bytes into arrays of item T with cb_make was a constructor of T from u16 value.
+// parse_u16list_withlen decodes bytes into arrays of item T with cb_make was a constructor of T from u16 value.
 // Its also parsing prepended length of array of item.
 @[direct_array_access]
-fn parse_u16list_with_len[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
+fn parse_u16list_withlen[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
 	mut r := new_buffer(bytes)!
 
 	// gets the length part, its only supports 1 or 2 bytes-length
@@ -196,9 +196,9 @@ fn parse_u16list_with_len[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
 	return parse_u16list[T](src, cb_make)!
 }
 
-// cap_u16list_with_len tells the length of capacities needed to serialize the list ts with prepended n-bytes length
+// cap_u16list_withlen tells the length of capacities needed to serialize the list ts with prepended n-bytes length
 @[inline]
-fn cap_u16list_with_len[T](ts []T, n int) int {
+fn cap_u16list_withlen[T](ts []T, n int) int {
 	mut c := 2 * ts.len
 	match n {
 		1 { c += 1 }
@@ -215,7 +215,7 @@ fn cap_u16list_with_len[T](ts []T, n int) int {
 // This type of opaque commonly defined as `type SomeOpaque = []u8`
 
 @[direct_array_access; inline]
-fn packraw_item_with_len[T](t T, cb_raw fn (t T) []u8, n int) ![]u8 {
+fn packraw_item_withlen[T](t T, cb_raw fn (t T) []u8, n int) ![]u8 {
 	c := capraw_item[T](t, cb_raw, n)
 	mut out := []u8{cap: c}
 	match n {
