@@ -1,146 +1,157 @@
-// Copyright ©2025 blackshirt.
+// Copyright © 2025 blackshirt.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
+// TLS 1.3 Extension
+// See the details on the sec. 4.2.  Extensions of RFC 8446
 module tls13
 
 import encoding.binary
 
 const min_extension_size = 4
 
+// Raw TLS 1.3 Extension
 @[noinit]
-struct Extension {
+struct TlsExtension {
 mut:
-	tipe   ExtensionType // u16 value
-	length int           // u16
-	data   []u8          // <0..2^16-1>
+	tipe ExtensionType // u16 value
+	data []u8          // <0..2^16-1>
 }
 
+// packlen_tlsextension returns the length of serialized TlsExtension, in bytes.
 @[inline]
-fn (e Extension) packed_length() int {
-	return min_extension_size + e.data.len
+fn packlen_tlsextension(r TlsExtension) int {
+	return min_extension_size + r.data.len
 }
 
+// pack_tlsextension encodes TlsExtension into bytes array
 @[inline]
-fn (e Extension) pack() ![]u8 {
-	if e.length != e.data.len {
-		return error('Mismatched extension length')
-	}
-	if e.data.len > max_u16 {
-		return error('Extension data exceed limit')
-	}
+fn pack_tlsextension(r TlsExtension) ![]u8 {
+	mut out := []u8{cap: packlen_tlsextension(r)}
+	// serialize ExtensionType, its a u16 value
+	xtipe := pack_u16item[ExtensionType](r.tipe)
+	out << xtipe
 
-	mut len_buf := []u8{len: u16size}
-	binary.big_endian_put_u16(mut len_buf, u16(e.length))
+	// serialize extension data, includes this data length as u16 value
+	data_len := pack_u16item[int](data.len)
+	out << data_len
+	// finally puts the extesnion data
+	out << r.data
 
-	mut out := []u8{}
-
-	// writes out the data into output buffer
-	out << e.tipe.pack()!
-	out << len_buf
-	out << e.data
-
+	// returns the output
 	return out
 }
 
+// parse_tlsextension decodes bytes array into TlsExtension
 @[direct_array_access; inline]
-fn Extension.unpack(b []u8) !Extension {
-	if b.len < min_extension_size {
-		return error('Bad Extension bytes')
+fn parse_tlsextension(bytes []u8) !TlsExtension {
+	// minimally its should contain extension type and payload length
+	if bytes.len < min_extension_size {
+		return error('Bad TlsExtension bytes')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(bytes)!
 
 	// read ExtensionType
 	t := r.read_u16()!
-	tipe := ExtensionType.from_u16(t)!
+	tipe := new_exttype(t)!
 
-	// read length
+	// read data length
 	length := r.read_u16()!
-	// bytes of extension data
+	// read bytes of extension data
 	ext_data := r.read_at_least(int(length))!
 
-	e := Extension{
-		tipe:   tipe
-		length: int(length)
-		data:   ext_data
+	return TlsExtension{
+		tipe: tipe
+		data: ext_data
 	}
-	return e
 }
 
-fn (mut exts []Extension) append(e Extension) {
-	if e in exts {
+// append adds one item e into arrays xs
+@[direct_array_access]
+fn (mut xs []TlsExtension) append(e TlsExtension) {
+	if e in xs {
 		return
 	}
 	// If one already exists with this type, replace it
-	for mut item in exts {
+	for mut item in xs {
 		if item.tipe == e.tipe {
 			item.data = e.data
 			continue
 		}
 	}
 	// otherwise append
-	exts << e
+	xs << e
 }
 
-// Extension extensions<8..2^16-1>;
-fn (exts []Extension) pack() ![]u8 {
-	mut ext_list := []u8{}
-	for ex in exts {
-		o := ex.pack()!
-		ext_list << o
-	}
-	if ext_list.len > max_u16 {
-		return error('Bad Extension list length')
-	}
-	mut len := []u8{len: 2}
-	binary.big_endian_put_u16(mut len, u16(ext_list.len))
-
-	mut out := []u8{}
-	out << len
-	out << ext_list
-
-	return out
-}
-
-fn (exts []Extension) packed_length() int {
+// xslist_payloadlen tells the length of serialized xs, without the prepended length
+@[direct_array_access; inline]
+fn xslist_payloadlen(xs []TlsExtension) int {
 	mut n := 0
-	n += 2
-	for e in exts {
-		n += e.packed_length()
+	for e in xs {
+		n += packlen_tlsextension(e)
 	}
 	return n
 }
 
-type ExtensionList = []Extension
-
-fn (exl []Extension) filtered_exts_with_type(extype ExtensionType) []Extension {
-	return exl.filter(it.tipe == extype)
+// the length of serialized xs prepended with the u16-sized length
+@[direct_array_access; inline]
+fn xslist_packlen(xs []TlsExtension) int {
+	return 2 + xslist_payloadlen(xs)
 }
 
-fn (exl []Extension) validate_with_filter(tipe ExtensionType) ![]Extension {
-	filtered := exl.filter(it.tipe == tipe)
+// parse_xslist_withlen decodes bytes into arrays of TlsExtension with prepended length
+@[direct_array_access]
+fn parse_xslist_withlen(bytes []u8) ![]TlsExtension {
+	if bytes.len < 2 {
+		return error('Bad ExtensionList bytes')
+	}
+	mut r := new_buffer(bytes)!
+	length := r.read_u16()!
+	xs_bytes := r.read_at_least(int(length))!
+	return parse_xslist(xs_bytes)!
+}
+
+// parse_xslist decodes bytes into arrays of TlsExtension, without prepended length
+@[direct_array_access; inline]
+fn parse_xslist(bytes []u8) ![]TlsExtension {
+	mut i := 0
+	mut xs := []TlsExtension{cap: bytes.len / 4}
+	for i < bytes.len {
+		x := parse_tlsextension(bytes[i..])!
+		xs.append(x)
+		// one length of serialized extension
+		i += min_extension_size + x.data.len
+	}
+	return xs
+}
+
+// filtered_by_tipe filters xs by tipe and returns the new result.
+@[direct_array_access]
+fn (xs []TlsExtension) filtered_by_tipe(tipe ExtensionType) []TlsExtension {
+	return xs.filter(it.tipe == tipe)
+}
+
+// returns if only single valid result filtered by tipe
+@[direct_array_access]
+fn (xs []TlsExtension) validate_with_filter(tipe ExtensionType) ![]TlsExtension {
+	filtered := xs.filter(it.tipe == tipe)
 	if filtered.len != 1 {
 		return error('null or multiples tipe')
 	}
 	return filtered
 }
 
-@[direct_array_access; inline]
-fn ExtensionList.unpack(b []u8) !ExtensionList {
-	if b.len < 2 {
-		return error('Bad ExtensionList bytes')
+// Helpers for creating TLS 1.3 Extension from supported extension type
+//
+
+// ext_from_sigscheme_list creates .signature_algorithms extesnion type from arrays of SignatureScheme
+@[direct_array_access]
+fn ext_from_sigscheme_list(ss []SignatureScheme) !TlsExtension {
+	// The "extension_data" field of these extensions contains a SignatureSchemeList value
+	// where its values was limited by <2..2^16-2>;
+	xs_payload := pack_u16list_with_len[SignatureScheme](ss, 2)!
+	return TlsExtension{
+		tipe: .signature_algorithms
+		data: xs_payload
 	}
-	mut r := Buffer.new(b)!
-	length := r.read_u16()!
-	exts_bytes := r.read_at_least(int(length))!
-	mut i := 0
-	mut exts := []Extension{}
-	for i < length {
-		x := Extension.unpack(exts_bytes[i..])!
-		exts.append(x)
-		i += 2 // for tipe
-		i += 2 // for data.len
-		i += x.data.len
-	}
-	return ExtensionList(exts)
 }

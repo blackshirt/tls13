@@ -36,7 +36,9 @@ fn CcsType.unpack(b []u8) !CcsType {
 }
 
 // ChangeCipherSpec
+@[noinit]
 struct ChangeCipherSpec {
+mut:
 	ccs_type CcsType
 }
 
@@ -60,17 +62,18 @@ const min_tls13_record_length = 5
 // TLSRecord is a general purposes structure represents TLS 1.3 Record
 // This struct doesn't representing encrypted record or not, for this typical use
 // TLSPlaintext or TLSCiphertext structure
+@[noinit]
 struct TLSRecord {
 mut:
-	ctn_type ContentType
-	version  ProtocolVersion = tls_v12
+	ctype   ContentType
+	version TlsVersion = tls_v12
 	// Should this length to be relaxed, so its can handle fragmented record ?
 	length  int // u16
 	payload []u8
 }
 
 pub fn (rec TLSRecord) str() string {
-	return 'TLSRecord:type=${rec.ctn_type}:length=${rec.length}:payload=${rec.payload.bytestr()}'
+	return 'TLSRecord:type=${rec.ctype}:length=${rec.length}:payload=${rec.payload.bytestr()}'
 }
 
 @[inline]
@@ -79,16 +82,16 @@ fn (r TLSRecord) packed_length() int {
 }
 
 fn (rc TLSRecord) expect_type(exptype ContentType) bool {
-	return rc.ctn_type == exptype
+	return rc.ctype == exptype
 }
 
-fn (mut r TLSRecord) set_record_version(ver ProtocolVersion) {
+fn (mut r TLSRecord) set_record_version(ver TlsVersion) {
 	r.version = ver
 }
 
 @[inline]
 fn (r TLSRecord) pack() ![]u8 {
-	ctn_type := r.ctn_type.pack()!
+	ctype := r.ctype.pack()!
 	version := r.version.pack()!
 	mut bytes_len := []u8{len: 2}
 	if r.length != r.payload.len {
@@ -100,7 +103,7 @@ fn (r TLSRecord) pack() ![]u8 {
 	binary.big_endian_put_u16(mut bytes_len, u16(r.length))
 
 	mut out := []u8{}
-	out << ctn_type
+	out << ctype
 	out << version
 	out << bytes_len
 	out << r.payload
@@ -115,17 +118,17 @@ fn TLSRecord.unpack(b []u8) !TLSRecord {
 	}
 	mut r := Buffer.new(b)!
 	t := r.read_u8()!
-	ctn_type := ContentType.from_u8(t)!
+	ctype := ContentType.from_u8(t)!
 	v := r.read_u16()!
-	version := ProtocolVersion.from_u16(v)!
+	version := TlsVersion.from_u16(v)!
 	length := r.read_u16()!
 	payload := r.read_at_least(int(length))!
 
 	rec := TLSRecord{
-		ctn_type: ctn_type
-		version:  version
-		length:   int(length)
-		payload:  payload
+		ctype:   ctype
+		version: version
+		length:  int(length)
+		payload: payload
 	}
 	return rec
 }
@@ -143,10 +146,10 @@ fn TLSRecord.from_handshake(h Handshake) !TLSRecord {
 		return error('handshake pack length exceed tls record limit')
 	}
 	rec := TLSRecord{
-		ctn_type: .handshake
-		version:  tls_v12
-		length:   payload.len
-		payload:  payload
+		ctype:   .handshake
+		version: tls_v12
+		length:  payload.len
+		payload: payload
 	}
 	return rec
 }
@@ -154,7 +157,7 @@ fn TLSRecord.from_handshake(h Handshake) !TLSRecord {
 // to_plaintext interpretes TLSRecord as a plain TLSPlaintext record
 fn (r TLSRecord) to_plaintext() TLSPlaintext {
 	pl := TLSPlaintext{
-		ctn_type:    r.ctn_type
+		ctype:       r.ctype
 		lgc_version: r.version
 		length:      r.length
 		fragment:    r.payload
@@ -165,7 +168,7 @@ fn (r TLSRecord) to_plaintext() TLSPlaintext {
 // to_ciphertext interpretes TLSRecord as a encrypted TLSCiphertext record
 fn (r TLSRecord) to_ciphertext() TLSCiphertext {
 	cxt := TLSCiphertext{
-		opaque_type: r.ctn_type
+		opaque_type: r.ctype
 		lgc_version: r.version
 		length:      r.length
 		enc_record:  r.payload
@@ -176,17 +179,17 @@ fn (r TLSRecord) to_ciphertext() TLSCiphertext {
 // TLSPlaintext represents unencrypted, aka, plain TLS 1.3 record
 struct TLSPlaintext {
 mut:
-	ctn_type    ContentType     = .invalid
-	lgc_version ProtocolVersion = tls_v12
+	ctype       ContentType = .invalid
+	lgc_version TlsVersion  = tls_v12
 	length      int // u16
 	fragment    []u8
 }
 
 fn (pl TLSPlaintext) expect_type(exptype ContentType) bool {
-	return pl.ctn_type == exptype
+	return pl.ctype == exptype
 }
 
-fn (mut pl TLSPlaintext) set_version(ver ProtocolVersion) ! {
+fn (mut pl TLSPlaintext) set_version(ver TlsVersion) ! {
 	if ver !in [tls_v11, tls_v12, tls_v13] {
 		return error('version not supported')
 	}
@@ -203,7 +206,7 @@ fn TLSPlaintext.from_handshake(h Handshake) !TLSPlaintext {
 		return error('Handshake payload need to fragment, its exceed')
 	}
 	mut rec := TLSPlaintext{
-		ctn_type: .handshake
+		ctype:    .handshake
 		length:   payload.len
 		fragment: payload
 	}
@@ -215,7 +218,7 @@ fn TLSPlaintext.from_handshake(h Handshake) !TLSPlaintext {
 fn TLSPlaintext.from_alert(a Alert) !TLSPlaintext {
 	payload := a.pack()!
 	mut rec := TLSPlaintext{
-		ctn_type:    .alert
+		ctype:       .alert
 		lgc_version: tls_v12
 		length:      payload.len
 		fragment:    payload
@@ -237,7 +240,7 @@ fn (pxt_list []TLSPlaintext) pack() ![]u8 {
 fn TLSPlaintext.from_ccs(c ChangeCipherSpec) !TLSPlaintext {
 	payload := c.pack()!
 	mut rec := TLSPlaintext{
-		ctn_type:    .change_cipher_spec
+		ctype:       .change_cipher_spec
 		lgc_version: tls_v12
 		length:      payload.len
 		fragment:    payload
@@ -247,15 +250,15 @@ fn TLSPlaintext.from_ccs(c ChangeCipherSpec) !TLSPlaintext {
 }
 
 pub fn (p TLSPlaintext) str() string {
-	return 'TLSPlaintext:type=${p.ctn_type}:length=${p.length}:fragment=${p.fragment.bytestr()}'
+	return 'TLSPlaintext:type=${p.ctype}:length=${p.length}:fragment=${p.fragment.bytestr()}'
 }
 
 fn (p TLSPlaintext) to_tls_record() TLSRecord {
 	return TLSRecord{
-		ctn_type: p.ctn_type
-		version:  p.lgc_version
-		length:   p.length
-		payload:  p.fragment
+		ctype:   p.ctype
+		version: p.lgc_version
+		length:  p.length
+		payload: p.fragment
 	}
 }
 
@@ -276,7 +279,7 @@ fn (p TLSPlaintext) pack() ![]u8 {
 		return error('Fragment length exceed limit')
 	}
 	mut out := []u8{}
-	ctn := p.ctn_type.pack()!
+	ctn := p.ctype.pack()!
 	ver := p.lgc_version.pack()!
 	mut bol := []u8{len: 2}
 	binary.big_endian_put_u16(mut bol, u16(p.length))
@@ -295,9 +298,9 @@ fn TLSPlaintext.unpack(b []u8) !TLSPlaintext {
 	}
 	mut r := Buffer.new(b)!
 	ctn := r.read_u8()!
-	ctn_type := ContentType.from_u8(ctn)!
+	ctype := ContentType.from_u8(ctn)!
 	ver := r.read_u16()!
-	version := ProtocolVersion.from_u16(ver)!
+	version := TlsVersion.from_u16(ver)!
 	length := r.read_u16()!
 	if length > (1 << 14) {
 		return error('Malformed TLSPlaintext fragment: overflow')
@@ -305,7 +308,7 @@ fn TLSPlaintext.unpack(b []u8) !TLSPlaintext {
 	fragment := r.read_at_least(int(length))!
 
 	pl := TLSPlaintext{
-		ctn_type:    ctn_type
+		ctype:       ctype
 		lgc_version: version
 		length:      int(length)
 		fragment:    fragment
@@ -346,7 +349,7 @@ fn (p TLSPlaintext) to_innerplaintext_with_padmode(padm PaddingMode) !TLSInnerPl
 	}
 	inner := TLSInnerPlaintext{
 		content:       p.fragment
-		ctn_type:      p.ctn_type
+		ctype:         p.ctype
 		zeros_padding: pad
 	}
 	return inner
@@ -355,9 +358,9 @@ fn (p TLSPlaintext) to_innerplaintext_with_padmode(padm PaddingMode) !TLSInnerPl
 struct TLSInnerPlaintext {
 	// content is the TLSPlaintext.fragment value
 	content []u8
-	// inner ctn_type is a TLSPlaintext.ctn_type value where its
+	// inner ctype is a TLSPlaintext.ctype value where its
 	// containing the actual content type of the record.
-	ctn_type ContentType
+	ctype ContentType
 	// zeros_padding is an arbitrary-length run of zero-valued bytes.
 	// Its shoul valid bytes arrays contains zeros bytes that does not exceed record limit,
 	zeros_padding []u8
@@ -368,7 +371,7 @@ fn (inner TLSInnerPlaintext) to_plaintext() !TLSPlaintext {
 		return error('inner.content length exceed limit')
 	}
 	plain := TLSPlaintext{
-		ctn_type:    inner.ctn_type
+		ctype:       inner.ctype
 		lgc_version: tls_v12
 		length:      inner.content.len
 		fragment:    inner.content
@@ -388,7 +391,7 @@ fn (ip TLSInnerPlaintext) pack() ![]u8 {
 	mut out := []u8{}
 	// TODD: is it should add content.len?
 	out << ip.content
-	out << ip.ctn_type.pack()!
+	out << ip.ctype.pack()!
 	out << ip.zeros_padding
 
 	return out
@@ -414,12 +417,12 @@ fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 	}
 	// make sure the padding is zero's bytes
 	assert is_zero(padding)
-	ctn_type := b[pos]
+	ctype := b[pos]
 	content := b[0..pos]
 
 	inner := TLSInnerPlaintext{
 		content:       content
-		ctn_type:      ContentType.from_u8(ctn_type)!
+		ctype:         ContentType.from_u8(ctype)!
 		zeros_padding: padding
 	}
 	return inner
@@ -429,8 +432,8 @@ fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 // for outward compatibility with middleboxes accustomed to parsing previous versions of TLS.
 // The actual content type of the record is found in TLSInnerPlaintext.type after decryption
 struct TLSCiphertext {
-	opaque_type ContentType     = .application_data
-	lgc_version ProtocolVersion = ProtocolVersion(0x0303)
+	opaque_type ContentType = .application_data
+	lgc_version TlsVersion  = TlsVersion(0x0303)
 	length      int // u16
 	enc_record  []u8
 }
@@ -473,9 +476,9 @@ fn TLSCiphertext.unpack(b []u8) !TLSCiphertext {
 		return error('Bad TLSCiphertext ContentType')
 	}
 	ver := r.read_u16()!
-	version := ProtocolVersion.from_u16(ver)!
+	version := TlsVersion.from_u16(ver)!
 	if version != tls_v12 {
-		return error('Bad TLSCiphertext ProtocolVersion ')
+		return error('Bad TLSCiphertext TlsVersion ')
 	}
 	length := r.read_u16()!
 	if length > 1 << 14 + 256 {
@@ -494,10 +497,10 @@ fn TLSCiphertext.unpack(b []u8) !TLSCiphertext {
 
 fn (c TLSCiphertext) to_tls_record() TLSRecord {
 	return TLSRecord{
-		ctn_type: c.opaque_type
-		version:  c.lgc_version
-		length:   int(c.length)
-		payload:  c.enc_record
+		ctype:   c.opaque_type
+		version: c.lgc_version
+		length:  int(c.length)
+		payload: c.enc_record
 	}
 }
 

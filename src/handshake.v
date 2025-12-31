@@ -10,15 +10,18 @@ const helloretry_magic = [u8(0xCF), 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0x
 const tls12_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x01]
 const tls11_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x00]
 
+// minimal handshake message size
 const min_hskmsg_size = 4
 
 // Handshake represents Tls 1.3 handshake message.
 //
 @[noinit]
 struct Handshake {
-	msg_type HandshakeType // u8 value
-	length   int           // max_u24
-	payload  []u8
+mut:
+	// htype u8 value
+	htype HandshakeType
+	// max_u24 lengtb
+	payload []u8
 }
 
 @[inline]
@@ -27,18 +30,18 @@ fn (h Handshake) packed_length() int {
 }
 
 fn (h Handshake) expect_hsk_type(hsktype HandshakeType) bool {
-	return h.msg_type == hsktype
+	return h.htype == hsktype
 }
 
 // is_hrr checks whether this handshake message is HelloRetryRequest message.
-// two cases here, first of it, the msg_type is hello_retry_request type and the second
-// if the msg_type is .server_hello with random value contains helloretry_magic constant.
+// two cases here, first of it, the htype is hello_retry_request type and the second
+// if the htype is .server_hello with random value contains helloretry_magic constant.
 // otherwise, its not HelloRetryRequest message.
 fn (h Handshake) is_hrr() !bool {
-	if h.msg_type == .hello_retry_request {
+	if h.htype == .hello_retry_request {
 		return true
 	}
-	if h.msg_type == .server_hello {
+	if h.htype == .server_hello {
 		sh := ServerHello.unpack(h.payload)!
 		if sh.is_hrr() {
 			return true
@@ -56,12 +59,12 @@ fn (h Handshake) pack() ![]u8 {
 		return error('Handshake length exceed limit')
 	}
 	mut out := []u8{}
-	msg_type := h.msg_type.pack()!
+	htype := h.htype.pack()!
 	length := Uint24.from_int(h.length)!
 	bytes_of_length := length.bytes()!
 
 	// writes bytes into out
-	out << msg_type
+	out << htype
 	out << bytes_of_length
 	out << h.payload
 
@@ -75,7 +78,7 @@ fn Handshake.unpack(b []u8) !Handshake {
 	}
 	mut r := Buffer.new(b)!
 	tipe := r.read_u8()!
-	msg_type := HandshakeType.from_u8(tipe)!
+	htype := HandshakeType.from_u8(tipe)!
 
 	// bytes of length
 	bytes_of_length := r.read_at_least(3)!
@@ -86,9 +89,9 @@ fn Handshake.unpack(b []u8) !Handshake {
 	payload := r.read_at_least(length)!
 	assert payload.len == length
 	out := Handshake{
-		msg_type: msg_type
-		length:   length
-		payload:  payload
+		htype:   htype
+		length:  length
+		payload: payload
 	}
 
 	return out
@@ -104,9 +107,9 @@ fn (hs []Handshake) packed_length() int {
 	return n
 }
 
-// filtered_msg_type filters []Handshake based on provided msg_type, its maybe null or contains filtered type.
+// filtered_msg_type filters []Handshake based on provided htype, its maybe null or contains filtered type.
 fn (hs []Handshake) filtered_hsk_with_type(msgtype HandshakeType) []Handshake {
-	return hs.filter(it.msg_type == msgtype)
+	return hs.filter(it.htype == msgtype)
 }
 
 // HandshakeList is arrays of handshake messages
@@ -162,7 +165,7 @@ type HandshakePayload = Certificate
 	| NewSessionTicket
 	| ServerHello
 
-fn (h HandshakePayload) msg_type() !HandshakeType {
+fn (h HandshakePayload) htype() !HandshakeType {
 	match h {
 		Certificate { return .certificate }
 		CertificateRequest { return .certificate_request }
@@ -186,14 +189,14 @@ fn (h HandshakePayload) pack_to_handshake_bytes() ![]u8 {
 
 // pack_to_handshake build Handshake message from HandshakePayload
 fn (h HandshakePayload) pack_to_handshake() !Handshake {
-	msg_type := h.msg_type()!
+	htype := h.htype()!
 	payload := h.pack()!
 	length := payload.len
 
 	hsk := Handshake{
-		msg_type: msg_type
-		length:   length
-		payload:  payload
+		htype:   htype
+		length:  length
+		payload: payload
 	}
 	return hsk
 }
@@ -253,27 +256,28 @@ fn (h HandshakePayload) pack() ![]u8 {
 	}
 }
 
-// Minimal length checked here inculdes minimal of cipher_suites and extensions length
+// Minimal length checked here inculdes minimal of csuites and extensions length
 // Minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
 const min_clienthello_size = 51
 
+@[noinit]
 struct ClientHello {
 mut:
-	lgc_version   ProtocolVersion = tls_v12 // TLS v1.2
-	random        []u8          // 32 bytes
-	lgc_sessid    []u8          // <0..32>;
-	cipher_suites []CipherSuite // <2..2^16-2>;
-	lgc_comp_meth u8            //<1..2^8-1>;
-	extensions    []Extension   // <8..2^16-1>;
+	version    TlsVersion = tls_v12 // TLS v1.2
+	random     []u8          // 32 bytes
+	sessid     []u8          // <0..32>;
+	csuites    []CipherSuite // <2..2^16-2>;
+	cmpmeth    u8            //<1..2^8-1>;
+	extensions []Extension   // <8..2^16-1>;
 }
 
 fn (ch ClientHello) packed_length() int {
 	mut n := 0
-	n += 2 // ProtocolVersion
+	n += 2 // TlsVersion
 	n += 32 // 32 bytes of random
-	n += 1 // one byte of lgc_sessid.len
-	n += ch.lgc_sessid.len
-	n += ch.cipher_suites.packed_length()
+	n += 1 // one byte of sessid.len
+	n += ch.sessid.len
+	n += ch.csuites.packed_length()
 	n += 1 // one byte of length compression_method
 	n += 1 // one byte compression_method
 	n += ch.extensions.packed_length()
@@ -283,7 +287,7 @@ fn (ch ClientHello) packed_length() int {
 
 @[inline]
 fn (ch ClientHello) pack() ![]u8 {
-	if ch.lgc_sessid.len > 32 {
+	if ch.sessid.len > 32 {
 		return error('Session id length exceed')
 	}
 	if ch.random.len != 32 {
@@ -291,13 +295,13 @@ fn (ch ClientHello) pack() ![]u8 {
 	}
 	mut out := []u8{}
 
-	out << ch.lgc_version.pack()!
+	out << ch.version.pack()!
 	out << ch.random
-	out << u8(ch.lgc_sessid.len)
-	out << ch.lgc_sessid
-	out << ch.cipher_suites.pack()!
+	out << u8(ch.sessid.len)
+	out << ch.sessid
+	out << ch.csuites.pack()!
 	out << u8(0x01)
-	out << ch.lgc_comp_meth
+	out << ch.cmpmeth
 	out << ch.extensions.pack()!
 
 	return out
@@ -311,16 +315,16 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	mut r := Buffer.new(b)!
 	// version,
 	ver := r.read_u16()!
-	version := ProtocolVersion.from_u16(ver)!
+	version := TlsVersion.from_u16(ver)!
 	if version != tls_v12 {
 		return error('Bad protocol version: violated')
 	}
 	// random
 	random := r.read_at_least(32)!
-	// lgc_sessid
+	// sessid
 	legn := r.read_u8()!
 	if legn > 32 {
-		return error('lgc_sessid exceed')
+		return error('sessid exceed')
 	}
 	legacy := r.read_at_least(int(legn))!
 
@@ -342,12 +346,12 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	ch := ClientHello{
-		lgc_version:   version
-		random:        random
-		lgc_sessid:    legacy
-		cipher_suites: ciphers
-		lgc_comp_meth: cmethd
-		extensions:    extensions
+		version:    version
+		random:     random
+		sessid:     legacy
+		csuites:    ciphers
+		cmpmeth:    cmethd
+		extensions: extensions
 	}
 	return ch
 }
@@ -355,8 +359,8 @@ fn ClientHello.unpack(b []u8) !ClientHello {
 // parse_server_hello parse ServerHello with associated ClientHello
 fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	// A client which receives a cipher suite that was not offered MUST abort the handshake
-	if !ch.cipher_suites.is_exist(sh.cipher_suite) {
-		return error("ClientHello.cipher_suites doesn't contains server cipher_suite")
+	if !ch.csuites.is_exist(sh.cipher_suite) {
+		return error("ClientHello.csuites doesn't contains server cipher_suite")
 	}
 	// TLS 1.3 clients receiving a ServerHello indicating TLS 1.2 or below
 	// MUST check that the last 8 bytes are not equal to either of these values.
@@ -369,7 +373,7 @@ fn (ch ClientHello) parse_server_hello(sh ServerHello) !bool {
 	}
 	// A client which receives a lgc_sessid_echo field that does not match what it sent
 	// in the ClientHello MUST abort the handshake with an "illegal_parameter" alert.
-	if !hmac.equal(ch.lgc_sessid, sh.lgc_sessid_echo) {
+	if !hmac.equal(ch.sessid, sh.lgc_sessid_echo) {
 		return error("Server and Client sessid doesn't match")
 	}
 	// If the "supported_versions" extension in the ServerHello contains a version not offered
@@ -392,11 +396,11 @@ const min_serverhello_size = 46
 //
 struct ServerHello {
 mut:
-	lgc_version     ProtocolVersion = tls_v12
+	version         TlsVersion = tls_v12
 	random          []u8
 	lgc_sessid_echo []u8 // <0..32>;
 	cipher_suite    CipherSuite
-	lgc_comp_meth   u8 = 0x00
+	cmpmeth         u8 = 0x00
 	extensions      []Extension // <6..2^16-1>;
 }
 
@@ -426,12 +430,12 @@ fn (sh ServerHello) pack() ![]u8 {
 	}
 	mut out := []u8{}
 
-	out << sh.lgc_version.pack()!
+	out << sh.version.pack()!
 	out << sh.random
 	out << u8(sh.lgc_sessid_echo.len)
 	out << sh.lgc_sessid_echo
 	out << sh.cipher_suite.pack()!
-	out << sh.lgc_comp_meth
+	out << sh.cmpmeth
 	out << sh.extensions.pack()!
 
 	return out
@@ -446,9 +450,9 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	mut r := Buffer.new(b)!
 	// version
 	ver := r.read_u16()!
-	version := ProtocolVersion.from_u16(ver)!
+	version := TlsVersion.from_u16(ver)!
 	if version != tls_v12 {
-		return error('Bad ProtocolVersion lgc_version')
+		return error('Bad TlsVersion version')
 	}
 	random := r.read_at_least(32)!
 	// lgc_sessid_echo
@@ -467,11 +471,11 @@ fn ServerHello.unpack(b []u8) !ServerHello {
 	extensions := ExtensionList.unpack(exts_bytes)!
 
 	sh := ServerHello{
-		lgc_version:     version
+		version:         version
 		random:          random
 		lgc_sessid_echo: sessid
 		cipher_suite:    cipher
-		lgc_comp_meth:   comp_meth
+		cmpmeth:         comp_meth
 		extensions:      extensions
 	}
 	return sh

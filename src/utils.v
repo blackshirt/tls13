@@ -48,6 +48,16 @@ fn pack_u8list_with_len[T](ts []T, n int) ![]u8 {
 	return out
 }
 
+// parse_u8item decodes first bytes as T
+@[direct_array_access]
+fn parse_u8item[T](bytes []8, cb_make fn (u8) !T) !T {
+	if bytes.len < 1 {
+		return error('need more bytes')
+	}
+	value := bytes[0]
+	return cb_make(value)!
+}
+
 // cap_u8list gets the capacities needed with specified length for ts.
 @[direct_array_access; inline]
 fn cap_u8list[T](ts []T, n int) int {
