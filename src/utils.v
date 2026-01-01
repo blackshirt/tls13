@@ -222,6 +222,9 @@ fn cap_u16list_withlen[T](ts []T, n int) int {
 fn pack_raw_withlen(r []u8, n int) ![]u8 {
 	mut out := []u8{cap: packlen_raw(r, n)}
 	match n {
+		0 {
+			// do nothing
+		}
 		1 {
 			// 1-byte length should not exceed max_u8 value
 			if r.len > max_u8 {
@@ -259,6 +262,7 @@ fn pack_raw_withlen(r []u8, n int) ![]u8 {
 @[inline]
 fn packlen_raw(r []u8, n int) int {
 	match n {
+		0 { return r.len }
 		1 { return r.len + 1 }
 		2 { return r.len + 2 }
 		3 { return r.len + 3 }
