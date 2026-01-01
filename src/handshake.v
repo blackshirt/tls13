@@ -636,6 +636,8 @@ fn CertificateRequest.unpack(b []u8) !CertificateRequest {
 	return cr
 }
 
+// 4.4.2.  Certificate
+//
 // CertificateType = u8
 enum CertificateType as u8 {
 	x509           = 0
@@ -644,8 +646,9 @@ enum CertificateType as u8 {
 	unknown        = 255 // unofficial
 }
 
+// new_certtype creates a CertificateType from byte value
 @[inline]
-fn CertificateType.from_u8(val u8) !CertificateType {
+fn new_certtype(val u8) !CertificateType {
 	match val {
 		0 { return .x509 }
 		1 { return .openpgp }
@@ -655,213 +658,261 @@ fn CertificateType.from_u8(val u8) !CertificateType {
 	}
 }
 
-@[inline]
-fn (ct CertificateType) pack() ![]u8 {
-	if u8(ct) > max_u8 {
-		return error('CertificateType exceed')
-	}
-	return [u8(ct)]
-}
+// CertificateEntry
+//
+// struct {
+//       select (certificate_type) {
+//            case RawPublicKey:
+//              /* From RFC 7250 ASN.1_subjectPublicKeyInfo */
+//              opaque ASN1_subjectPublicKeyInfo<1..2^24-1>;
+//
+//            case X509:
+//              opaque cert_data<1..2^24-1>;
+//        };
+//        Extension extensions<0..2^16-1>;
+//    } CertificateEntry;
+//
+const min_centry_size = 5
+const max_opaque_size = max_u24 // 1 << 24 - 1
 
-@[direct_array_access; inline]
-fn CertificateType.unpack(b []u8) !CertificateType {
-	if b.len != 1 {
-		return error('Bad CertificateType bytes')
-	}
-	return CertificateType.from_u8(b[0])!
-}
-
-const max_certentry_data_size = max_u24 // 1 << 24 - 1
-
+// CertificateEntry is a part of Certificate structure
+//
 @[noinit]
 struct CertificateEntry {
 mut:
-	cetipe CertificateType // u8
-	cedata []u8            //<1..2^24-1>;
-	xslist []Extension     //<0..2^16-1>;
+	opaque []u8        //<1..2^24-1>;
+	xslist []Extension //<0..2^16-1>;
 }
 
-fn (ce CertificateEntry) packed_length() int {
-	mut n := 0
-	n += 1 // cetipe
-	n += 3 // ce.cedata.len
-	n += ce.cedata.len
-	n += ce.xslist.packed_length()
-
-	return n
-}
-
-@[direct_array_access; inline]
-fn (ce CertificateEntry) pack() ![]u8 {
-	match ce.cetipe {
-		.x509, .raw_public_key {
-			// FIXME: is it should handle differently?
-			if ce.cedata.len > max_certentry_data_size {
-				return error('Certificate data exceed')
-			}
-			cert_length := Uint24.from_int(ce.cedata.len)!
-			cert_bytes_length := cert_length.bytes()!
-
-			exts := ce.xslist.pack()!
-			mut out := []u8{}
-			out << cert_bytes_length
-			out << ce.cedata
-			out << exts
-
-			return out
-		}
-		else {
-			return error('to be implemented')
-		}
+// check_ce does basic check validation on ce 
+@[inline]
+fn (ce CertificateEntry) check_ce() ! {
+	if ce.opaque.len > max_u24 {
+		return error('certificate entry data exceed max_u24')
 	}
 }
 
+// packlen_ceentry returns the length of serialized CertificateEntry ce
+@[inline]
+fn packlen_ceentry(ce CertificateEntry) int {
+	mut n := 0
+	n += 3 // ce.opaque.len
+	n += ce.opaque.len
+	n += packlen_xslist_withlen(ce.xslist)
+	return n
+}
+
+// pack_ceentry encodes ce into bytes array.
 @[direct_array_access; inline]
-fn CertificateEntry.unpack(b []u8) !CertificateEntry {
-	if b.len < 5 {
+fn pack_ceentry(ce CertificateEntry) ![]u8 {
+	mut out := []u8{cap: packlen_ceentry(ce)}
+
+	// FIXME: different type should be handled differently?
+	if ce.opaque.len > max_opaque_size {
+		return error('Certificate data exceed')
+	}
+	// encodes certificate data and their length
+	bol3 := u24_from_int(ce.opaque.len)!
+	out << bol3.bytes()!
+	out << ce.opaque
+
+	// encodes certificate extension list with length
+	out << pack_xslist_withlen(c.xslist)!
+
+	return out
+}
+
+// parse_ceentry decodes bytes b into CertificateEntry
+@[direct_array_access; inline]
+fn parse_ceentry(b []u8) !CertificateEntry {
+	if b.len < min_centry_size {
 		return error('Bad CertificateEntry bytes: underflow')
 	}
 	mut r := new_buffer(b)!
-	// read 3 bytes length of cedata
-	bytes_length := r.read_at_least(3)!
-	val := Uint24.from_bytes(bytes_length)!
-	length := int(val)
-	if length > max_certentry_data_size {
-		return error('CertificateEntry.cedata exceed')
-	}
-	cedata := r.read_at_least(length)!
 
-	// read xslist
-	exts_length := r.peek_u16()!
-	exts_data := r.read_at_least(int(exts_length) + 2)!
-	exts := ExtensionList.unpack(exts_data)!
+	// read 3 bytes length of opaque
+	bol3 := r.read_at_least(3)!
+	opaque_len := u24_from_bytes(bol3)!
+	opaque := r.read_at_least(int(opaque_len))!
+
+	// read extension list with prepended length
+	xlen := r.read_u16()
+	xs_bytes := r.read_at_least(int(xlen))!
+	xs := parse_xslist(xs_bytes)!
 
 	ce := CertificateEntry{
-		cedata: cedata
-		xslist: exts
+		opaque: opaque
+		xslist: xs
 	}
+	ce.check_ce()!
+
 	return ce
 }
 
-fn (cel []CertificateEntry) packed_length() int {
+// CertificateEntry certificate_list<0..2^24-1>;
+type CertificateEntryList = []CertificateEntry
+
+// packlen_celist returns the length of encoded cs without the length part. 
+@[inline]
+fn packlen_celist(cs []CertificateEntry) int {
 	mut n := 0
-	n += 3
-	for ce in cel {
-		n += ce.packed_length()
+	for c in cs {
+		n += packlen_ceentry(c)
 	}
 	return n
 }
 
-fn (cel []CertificateEntry) pack() ![]u8 {
-	mut cel_length := 0
-	for c in cel {
-		cel_length += c.packed_length()
+// packlen_celist_withlen returns encoded cs with prepended n-bytes length, n should be 3
+@[inline]
+fn packlen_celist_withlen(cs []CertificateEntry, n int) int {
+	match n {
+		1 { return 1 + packlen_celist(cs) }
+		2 { return 2 + packlen_celist(cs) }
+		3 { return 3 + packlen_celist(cs) }
+		4 { return 4 + packlen_celist(cs) }
+		else { panic('unsupported length') }
 	}
-	if cel_length > max_u24 {
-		return error('CertificateEntry list exceed')
-	}
-	mut out := []u8{}
-	celist_length := Uint24.from_int(cel_length)!
-	celist_bytes := celist_length.bytes()!
+}
 
-	out << celist_bytes
-	for ce in cel {
-		o := ce.pack()!
-		out << o
+// pack_celist encodes cs into bytes array without the length part 
+@[direct_array_access; inline]
+fn pack_celist(cs []CertificateEntry) ![]u8 {
+	mut out := []u8{cap: packlen_celist(cs)}
+	for c in cs {
+		out << pack_ceentry(c)!
 	}
 	return out
 }
 
-type CertificateEntryList = []CertificateEntry
-
-fn CertificateEntryList.unpack(b []u8) !CertificateEntryList {
-	if b.len < 3 {
-		return error('CertificateEntryList bytes underflow')
+// pack_celist_withlen encodes array of CertificateEntry cs into bytes array prepended with n-bytes length 
+@[direct_array_access; inline]
+fn pack_celist_withlen(cs []CertificateEntry, n int) ![]u8 {
+	mut out := []u8{cap: packlen_celist_withlen(cs, n)}
+	match n {
+		3 {
+			bol3 := u24_from_int(packlen_celist(cs))!
+			out << bol3.bytes()!
+		}
+		else {
+			return error('unsupported length for celist ')
+		}
 	}
-	mut r := new_buffer(b)!
+	// serializes cs
+	out << pack_celist(cs)!
 
-	// read 3 bytes of length
-	bytes_of_length := r.read_at_least(3)!
-	val := Uint24.from_bytes(bytes_of_length)!
-	length := int(val)
-
-	// remaining bytes was smaller then length
-	// if r.remainder() < length {
-	//	return error('Underflow of remaining of CertificateEntryList bytes')
-	// }
-	// read payload
-	payload := r.read_at_least(length)!
-	mut i := 0
-	mut cel := []CertificateEntry{}
-	for i < payload.len {
-		ce := CertificateEntry.unpack(payload[i..])!
-		cel << ce
-		i += ce.packed_length()
-	}
-	return CertificateEntryList(cel)
+	return out
 }
 
+// parse_celist decodes bytes array into array of CertificateEntry without the length part.
+@[direct_array_access; inline]
+fn parse_celist(bytes []u8) ![]CertificateEntry {
+	mut i := 0
+	mut cs := []CertificateEntry{cap: bytes.len / min_centry_size}
+	for i < bytes.len {
+		c := parse_ceentry(bytes[i..])!
+		cs << c
+		i += packlen_ceentry(c)
+	}
+	return cs
+}
+
+// parse_celist_withlen decodes bytes array into arrays of CertificateEntry includes the 3-bytes length.
+@[direct_array_access; inline]
+fn parse_celist_withlen(bytes []u8) ![]CertificateEntry {
+	if bytes.len < 3 {
+		return error('underflow bytes for celist')
+	}
+	mut r := new_buffer(bytes)!
+	// read 3-bytes length of the arrays
+	bol3 := r.read_at_least(3)!
+	arrays_len := u24_from_bytes(bol3)!
+	arrays_data := r.read_at_least(int(arrays_len))!
+
+	// parse this array data into array of CertificateEntry
+	cs := parse_celist(arrays_data)!
+
+	return cs
+}
+
+// TLS 1.3 Certificate
+//
 const min_certificate_size = 4
 
 // 4.4.2.  Certificate
 // https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.2
 //
+// struct {
+//       opaque certificate_request_context<0..2^8-1>;
+//       CertificateEntry certificate_list<0..2^24-1>;
+//    } Certificate;
+//
 @[noinit]
 struct Certificate {
 mut:
-	context  []u8               // <0..2^8-1>;
-	certlist []CertificateEntry // <0..2^24-1>;
+	context []u8               // <0..2^8-1>;
+	celist  []CertificateEntry // <0..2^24-1>;
 }
 
-fn (c Certificate) packed_length() int {
-	mut n := 0
-	n += 1
-	n += c.context.len
-	n += c.certlist.packed_length()
+// check_cert does basic validation check on certifcate c.
+@[inline]
+fn (c Certificate) check_cert() ! {
+	if c.context.len > max_u8 {
+		return error('certificate context length exceed max_u8')
+	}
+	if packlen_celist(c.celist) > max_u24 {
+		return error('celist size exceed max_u24')
+	}
+}
 
+// packlen_cert returns the length of encoded certifcate c, in bytes.
+@[inline]
+fn packlen_cert(c Certificate) int {
+	mut n := 0
+	n += 1 + c.context.len
+	n += packlen_celist_withlen(c.celist, 3)
 	return n
 }
 
-@[direct_array_access; inline]
-fn (c Certificate) pack() ![]u8 {
-	mut out := []u8{}
-
-	if c.context.len > max_u8 {
-		return error('Bad context length: overflow')
-	}
-	// writes certificate request context
-	out << u8(c.context.len)
+// pack_cert encodes certifcate c into bytes array and check the result.	
+@[inline]
+fn pack_cert(c Certificate) ![]u8 {
+	mut out := []u8{cap: packlen_cert(c)}
+	// encodes 1-byte context.len and the certificate context
+	out << u8(c.context)
 	out << c.context
 
-	// writes certificates list
-	certlist := c.certlist.pack()!
-	out << certlist
+	// encodes certificate list
+	out << pack_celist_withlen(c.celist, 3)!
 
 	return out
 }
 
+// parse_cert decodes bytes array into Certificate opaque and validates them.
 @[direct_array_access; inline]
-fn Certificate.unpack(b []u8) !Certificate {
+fn parse_cert(bytes []u8) !Certificate {
 	if b.len < min_certificate_size {
 		return error('Bad Certificate bytes: underflow')
 	}
 	mut r := new_buffer(b)!
-	// read context
+	// read certificate context
 	cr := r.read_u8()!
-	creq := r.read_at_least(int(cr))!
+	context := r.read_at_least(int(cr))!
 
-	// peek 3 bytes of length
-	bytes_of_length := r.peek_bytes(3)!
-	val := Uint24.from_bytes(bytes_of_length)!
-	length := int(val)
+	// read 3-bytes length of certificate list
+	bol3 := r.read_bytes(3)!
+	length := u24_from_bytes(bol3)!
 
-	certlist_payload := r.read_at_least(length + 3)!
-	certlist := CertificateEntryList.unpack(certlist_payload)!
+	// parse certificate entries payload
+	celist_data := r.read_at_least(int(length))!
+	celist := parse_celist(celist_payload)!
 
-	cert := Certificate{
-		context:  creq
-		certlist: certlist
+	c := Certificate{
+		context: context
+		celist:  celist
 	}
+	// check
+	c.check_cert()!
+
 	return cert
 }
 
@@ -870,6 +921,11 @@ fn Certificate.unpack(b []u8) !Certificate {
 //
 const min_certverify_size = 4
 
+// struct {
+//       SignatureScheme algorithm;
+//       opaque signature<0..2^16-1>;
+//   } CertificateVerify;
+//
 @[noinit]
 struct CertificateVerify {
 mut:
@@ -877,33 +933,45 @@ mut:
 	signature []u8            // <0..2^16-1>;
 }
 
+// packlen_certverify returns the length of encoded CertificateVerify cv.
 @[inline]
 fn packlen_certverify(cv CertificateVerify) int {
 	return min_certverify_size + cv.signature.len
 }
 
-fn (c CertificateVerify) check_cv() ! {}
+// check_cv does basic check on CertificateVerify c.
+@[inline]
+fn (c CertificateVerify) check_cv() ! {
+	if c.signature.len > max_u16 {
+		return error('certifcate verify signature length exceed max_u16')
+	}
+}
 
+// pack_certverify encodes CertificateVerify cv into bytes array.
 @[direct_array_access; inline]
 fn pack_certverify(cv CertificateVerify) ![]u8 {
 	cv.check()!
 	mut out := []u8{cap: packlen_certverify(cv)}
+	// encodes signature algorithm
 	out << pack_u16item[SignatureScheme](cv.algorithm)
+	// encodes signature bytes with their length 
 	out << pack_raw_withlen(cv.signature, 2)!
 
 	return out
 }
 
+// parse_certverify decodes bytes b into CertificateVerify
 @[direct_array_access; inline]
 fn parse_certverify(b []u8) !CertificateVerify {
 	if b.len < min_certverify_size {
 		return error('Bad CertificateVerify bytes: underflow')
 	}
 	mut r := new_buffer(b)!
+	// read signature algorithm
 	alg := r.read_u16()!
 	algorithm := new_sigscheme(alg)!
 
-	// signature
+	// read 2-bytes length of signature and their bytes 
 	slen := r.read_u16()!
 	signature := r.read_at_least(int(slen))!
 
@@ -911,6 +979,7 @@ fn parse_certverify(b []u8) !CertificateVerify {
 		algorithm: algorithm
 		signature: signature
 	}
+	// check the result 
 	cv.check_cv()!
 
 	return cv
@@ -965,6 +1034,7 @@ mut:
 	xslist   []Extension
 }
 
+// packlen_nst returns the length of encoded NewSessionTicket message st into bytes array.
 @[inline]
 fn packlen_nst(st NewSessionTicket) int {
 	mut n := 0
@@ -1035,7 +1105,7 @@ fn parse_nst(b []u8) !NewSessionTicket {
 		ticket:   ticket
 		xslist:   xs
 	}
-	// check
+	// check the result
 	st.check_nst()!
 
 	return st

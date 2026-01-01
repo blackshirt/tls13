@@ -122,6 +122,14 @@ fn pack_u16list_withlen[T](ts []T, n int) ![]u8 {
 			// serializes two-bytes length into output
 			out << pack_u16item[int](2 * ts.len)
 		}
+		3 {
+			// 3-bytes length should not exceed max_u24 value
+			if 2 * ts.len > max_u24 {
+				return error('exceed max_u24')
+			}
+			bol3 := u24_from_int(2 * ts.len)!
+			out << bol3.bytes()!
+		}
 		else {
 			return error('unsupported length')
 		}
@@ -132,9 +140,9 @@ fn pack_u16list_withlen[T](ts []T, n int) ![]u8 {
 	return out
 }
 
-// pack_u16len returns the length of serialized u16-sized opaque T.
+// packlen_u16item returns the length of serialized u16-sized opaque T.
 @[inline]
-fn pack_u16len[T](t T) int {
+fn packlen_u16item[T](t T) int {
 	return 2
 }
 
@@ -206,32 +214,37 @@ fn cap_u16list_withlen[T](ts []T, n int) int {
 // 3. Raw-bytes opaque, ie, []u8  helpers
 //
 // Some TLS 1.3 likes Cookie extension, Hostname , key exchange payload was defined as raw bytes
-// limited by some length.
+// limited by some length. Its also can be applied into raw bytes fields.
 // This type of opaque commonly defined as `type SomeOpaque = []u8`
 
+// pack_raw_withlen encodes raw bytes r prepended with the n-bytes length.
 @[direct_array_access; inline]
 fn pack_raw_withlen(r []u8, n int) ![]u8 {
 	mut out := []u8{cap: packlen_raw(r, n)}
 	match n {
 		1 {
+			// 1-byte length should not exceed max_u8 value
 			if r.len > max_u8 {
 				return error('exceed max_u8')
 			}
 			out << u8(r.len)
 		}
 		2 {
+			// 2-bytes length should not exceed max_u16 value
 			if r.len > max_u16 {
 				return error('exceed max_u16')
 			}
 			out << pack_u16item[int](r.len)
 		}
 		3 {
+			// 3-bytes length should not exceed max_u24 value
 			if r.len > max_u24 {
 				return error('exceed max_u24')
 			}
 			bol3 := u24_from_int(r.len)!
 			out << bol3.bytes()!
 		}
+		// TODO: support for more long bytes length
 		else {
 			return error('invalid length')
 		}
@@ -242,7 +255,7 @@ fn pack_raw_withlen(r []u8, n int) ![]u8 {
 	return out
 }
 
-// packlen_raw tells needed capacities of serializes r prepended with n-bytes length.
+// packlen_raw tells the capacities needed to serialize r prepended with n-bytes length.
 @[inline]
 fn packlen_raw(r []u8, n int) int {
 	match n {
