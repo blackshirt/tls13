@@ -7,10 +7,19 @@ module tls13
 
 import encoding.binary
 
-// 1. Helpers for u8-size opaques.
+// an enum tells the size of bytes needed to encode an object,
+// to be prepended on the output.
+enum SizeT {
+	size0 = 0
+	size1 = 1
+	size2 = 2
+	size3 = 3
+}
+
+// 1. Helpers for an opaque with u8-sized characteristic.
 //
-// Some of TLS 1.3 structures types, like ContentType, HandshakeType,  NameType, etc mostly was u8-size opaque.
-// This type of opaque commonly defined as `type SomeOpaque = u8`
+// Some of TLS 1.3 types, like ContentType, HandshakeType,  NameType, etc mostly was u8-sized opaque.
+// This type of opaque commonly defined as `type SomeOpaque = u8` or similar thing.
 
 // pack_u8list encodes array of u8-sized opaque in ts into bytes array.
 @[direct_array_access; inline]
@@ -23,12 +32,15 @@ fn pack_u8list[T](ts []T) []u8 {
 }
 
 // pack_u8list_withlen encodes array of u8-sized opaque in ts into bytes array
-// prepended with their length specified in n.
+// prepended with the length specified in n.
 @[direct_array_access]
-fn pack_u8list_withlen[T](ts []T, n int) ![]u8 {
-	c := cap_u8list[T](ts, n)
+fn pack_u8list_withlen[T](ts []T, n SizeT) ![]u8 {
+	c := size_u8list_withlen[T](ts, n)
 	mut out := []u8{cap: c}
 	match n {
+		0 {
+			// do nothing
+		}
 		1 {
 			if ts.len > max_u8 {
 				return error('exceed max_u8')
@@ -45,27 +57,19 @@ fn pack_u8list_withlen[T](ts []T, n int) ![]u8 {
 			return error('unsupported length')
 		}
 	}
+	// encodes the contents, and return the result
 	out << pack_u8list[T](ts)
 	return out
 }
 
-// parse_u8item decodes first bytes as T
-@[direct_array_access]
-fn parse_u8item[T](bytes []8, cb_make fn (u8) !T) !T {
-	if bytes.len < 1 {
-		return error('need more bytes')
-	}
-	value := bytes[0]
-	return cb_make(value)!
-}
-
-// cap_u8list gets the capacities needed with specified length for ts.
+// size_u8list_withlen gets the capacities needed with specified length for ts.
 @[direct_array_access; inline]
-fn cap_u8list[T](ts []T, n int) int {
+fn size_u8list_withlen[T](ts []T, n SizeT) int {
 	match n {
-		1 { return 1 + ts.len }
-		2 { return 2 + ts.len }
-		else { panic('invalid length') }
+		.size0 { return ts.len }
+		.size1 { return 1 + ts.len }
+		.size2 { return 2 + ts.len }
+		.size3 { return 3 + ts.len }
 	}
 }
 
@@ -101,20 +105,23 @@ fn pack_u16list[T](ts []T) []u8 {
 // pack_u16list_withlen encodes the array of item T in ts prepended with n-byte(s) length into bytes array.
 // Its only supports with 1 or 2 bytes-length, otherwise returns an error.
 @[direct_array_access]
-fn pack_u16list_withlen[T](ts []T, n int) ![]u8 {
+fn pack_u16list_withlen[T](ts []T, n SizeT) ![]u8 {
 	// get the bytes capacities for the output length
-	c := cap_u16list_withlen[T](ts, n)
+	c := size_u16list_withlen[T](ts, n)
 	mut out := []u8{cap: c}
 	match n {
-		1 {
+		.size0 {
+			// do nothing, directly encodes the payload
+		}
+		.size1 {
 			// check the arrays length
-			if ts.len > max_u8 {
+			if 2 * ts.len > max_u8 {
 				return error('length exceed max_u8')
 			}
 			// appends one-byte length into output
-			out << u8(ts.len)
+			out << u8(2 * ts.len)
 		}
-		2 {
+		.size2 {
 			// check the arrays length
 			if 2 * ts.len > max_u16 {
 				return error('length exceed max_u16')
@@ -122,7 +129,7 @@ fn pack_u16list_withlen[T](ts []T, n int) ![]u8 {
 			// serializes two-bytes length into output
 			out << pack_u16item[int](2 * ts.len)
 		}
-		3 {
+		.size3 {
 			// 3-bytes length should not exceed max_u24 value
 			if 2 * ts.len > max_u24 {
 				return error('exceed max_u24')
@@ -138,6 +145,17 @@ fn pack_u16list_withlen[T](ts []T, n int) ![]u8 {
 	out << pack_u16list[T](ts)
 
 	return out
+}
+
+// size_u16list_withlen tells the size needed to encode the list ts prepended with n-bytes length
+@[inline]
+fn size_u16list_withlen[T](ts []T, n SizeT) int {
+	match n {
+		.size0 { return 0 + 2 * ts.len }
+		.size1 { return 1 + 2 * ts.len }
+		.size2 { return 2 + 2 * ts.len }
+		.size3 { return 3 + 2 * ts.len }
+	}
 }
 
 // packlen_u16item returns the length of serialized u16-sized opaque T.
@@ -201,45 +219,35 @@ fn parse_u16list_withlen[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
 	return parse_u16list[T](src, cb_make)!
 }
 
-// cap_u16list_withlen tells the length of capacities needed to serialize the list ts with prepended n-bytes length
-@[inline]
-fn cap_u16list_withlen[T](ts []T, n int) int {
-	match n {
-		1 { return 1 + 2 * ts.len }
-		2 { return 2 + 2 * ts.len }
-		else { panic('unsupported length') }
-	}
-}
-
 // 3. Raw-bytes opaque, ie, []u8  helpers
 //
 // Some TLS 1.3 likes Cookie extension, Hostname , key exchange payload was defined as raw bytes
 // limited by some length. Its also can be applied into raw bytes fields.
-// This type of opaque commonly defined as `type SomeOpaque = []u8`
+// This type of opaque commonly defined as `type SomeOpaque = []u8` or similar thing.
 
 // pack_raw_withlen encodes raw bytes r prepended with the n-bytes length.
 @[direct_array_access; inline]
-fn pack_raw_withlen(r []u8, n int) ![]u8 {
+fn pack_raw_withlen(r []u8, n SizeT) ![]u8 {
 	mut out := []u8{cap: packlen_raw(r, n)}
 	match n {
-		0 {
+		.size0 {
 			// do nothing
 		}
-		1 {
+		.size1 {
 			// 1-byte length should not exceed max_u8 value
 			if r.len > max_u8 {
 				return error('exceed max_u8')
 			}
 			out << u8(r.len)
 		}
-		2 {
+		.size2 {
 			// 2-bytes length should not exceed max_u16 value
 			if r.len > max_u16 {
 				return error('exceed max_u16')
 			}
 			out << pack_u16item[int](r.len)
 		}
-		3 {
+		.size3 {
 			// 3-bytes length should not exceed max_u24 value
 			if r.len > max_u24 {
 				return error('exceed max_u24')
@@ -248,9 +256,6 @@ fn pack_raw_withlen(r []u8, n int) ![]u8 {
 			out << bol3.bytes()!
 		}
 		// TODO: support for more long bytes length
-		else {
-			return error('invalid length')
-		}
 	}
 	// get the raw bytes item, and append into output
 	out << r
@@ -260,17 +265,98 @@ fn pack_raw_withlen(r []u8, n int) ![]u8 {
 
 // packlen_raw tells the capacities needed to serialize r prepended with n-bytes length.
 @[inline]
-fn packlen_raw(r []u8, n int) int {
+fn packlen_raw(r []u8, n SizeT) int {
 	match n {
-		0 { return r.len }
-		1 { return r.len + 1 }
-		2 { return r.len + 2 }
-		3 { return r.len + 3 }
-		else { panic('unsupported length') }
+		.size0 { return r.len + 0 }
+		.size1 { return r.len + 1 }
+		.size2 { return r.len + 2 }
+		.size3 { return r.len + 3 }
 	}
 }
 
-// 4. Helpers for an opaque with 24-bits size
+// 4. Helpers for another arbitrary object
+//
+// Some complex structures, like handshake message, Extension, TLS Record etc
+// need some special handling.
+
+// size_objlist returns the size of serialized ts object array, with callback to get size
+// for single item of object T was defined in cb_objsize. For complex structures, you should
+// provide this callback.
+@[direct_array_access; inline]
+fn size_objlist[T](ts []T, cb_objsize fn (T) int) int {
+	mut n := 0
+	for t in ts {
+		n += cb_objsize(t)
+	}
+	return n
+}
+
+// size_objlist_withlen returns the size of encoded arrays of T in ts with prepended n-bytes length.
+// Its accepts a callback cb_objsize for returning the size of encoded single item of T.
+@[direct_array_access; inline]
+fn size_objlist_withlen[T](ts []T, cb_objsize fn (T) int, n SizeT) int {
+	match n {
+		.size0 { return 0 + size_objlist[T](ts, cb_objsize) }
+		.size1 { return 1 + size_objlist[T](ts, cb_objsize) }
+		.size2 { return 2 + size_objlist[T](ts, cb_objsize) }
+		.size3 { return 3 + size_objlist[T](ts, cb_objsize) }
+	}
+}
+
+// pack_objlist encodes arrays of object T in ts into bytes array.
+// Its accepts two's callback to help for determining correct behaviour, ie,
+// - cb_objsize, a callback for determining the size of encoded single item of object T
+// - cb_objpacker, a callback for serializing single item of object T into bytes array
+@[direct_array_access; inline]
+fn pack_objlist[T](ts []T, cb_objpacker fn (T) ![]u8, cb_objsize fn (T) int) ![]u8 {
+	mut out := []u8{cap: size_objlist[T](ts, cb_objsize)}
+	for item in ts {
+		out << cb_objpacker(item)!
+	}
+	return out
+}
+
+// pack_objlist_withlen  encodes arrays of object T in ts into bytes array prepended with n-bytes length.
+// See `pack_objlist` docs for the detail.
+@[direct_array_access; inline]
+fn pack_objlist_withlen[T](ts []T, cb_objpacker fn (T) ![]u8, cb_objsize fn (T) int, n SizeT) ![]u8 {
+	// get the size of output includes the specified n length
+	cap := size_objlist_withlen[T](ts, cb_objsize, n)
+	mut out := []u8{cap: cap}
+
+	// the length of array of object, in bytes
+	length := size_objlist[T](ts, cb_objsize)
+	match n {
+		.size0 {
+			// do nothing
+		}
+		.size1 {
+			if length > max_u8 {
+				return error('length []T payload exceeds max_u8')
+			}
+			out << u8(len)
+		}
+		.size2 {
+			if length > max_u16 {
+				return error('length []T payload exceeds max_u16')
+			}
+			out << pack_u16item[int](length)
+		}
+		.size3 {
+			if length > max_u24 {
+				return error('length []T payload exceeds max_u24')
+			}
+			bol3 := u24_from_int(length)!
+			out << bol3.bytes()!
+		}
+	}
+	// encodes the object list payload
+	out << pack_objlist[T](ts, cb_objpacker, cb_objsize)!
+
+	return out
+}
+
+// 5. Helpers for an opaque with 24-bits size
 //
 const max_u24 = 1 << 24 - 1 // 0x00FF_FFFF
 const mask_u24 = u32(0x00FF_FFFF)
@@ -353,7 +439,7 @@ fn (v Uint24) bytes(opt Uint24Options) ![]u8 {
 	}
 }
 
-// 5. Simple bytes reader
+// 6. Simple bytes reader
 //
 // Buffer was a simple and general purposes bytes reader
 //
