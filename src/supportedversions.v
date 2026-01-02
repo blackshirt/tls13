@@ -1,7 +1,7 @@
 module tls13
 
 struct ClientSpV {
-	versions []TlsVersion // TlsVersion versions<2..254>;
+	versions []Version // Version versions<2..254>;
 }
 
 fn (csv ClientSpV) pack() ![]u8 {
@@ -25,7 +25,7 @@ fn ClientSpV.unpack(b []u8) !ClientSpV {
 }
 
 struct ServerHRetrySpV {
-	version TlsVersion
+	version Version
 }
 
 fn (shv ServerHRetrySpV) pack() ![]u8 {
@@ -34,7 +34,7 @@ fn (shv ServerHRetrySpV) pack() ![]u8 {
 }
 
 fn ServerHRetrySpV.unpack(b []u8) !ServerHRetrySpV {
-	ver := TlsVersion.unpack(b)!
+	ver := Version.unpack(b)!
 	shv := ServerHRetrySpV{
 		version: ver
 	}
@@ -61,7 +61,7 @@ fn (sv SupportedVersions) pack() ![]u8 {
 fn SupportedVersions.unpack(b []u8, hsk HandshakeType) !SupportedVersions {
 	match hsk {
 		.client_hello {
-			// for clienthello, its minimal contains one of TlsVersion
+			// for clienthello, its minimal contains one of Version
 			if b.len < 3 {
 				return error('bad SupportedVersions bytes')
 			}

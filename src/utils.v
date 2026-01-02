@@ -10,16 +10,22 @@ import encoding.binary
 // an enum tells the size of bytes needed to encode an object,
 // to be prepended on the output.
 enum SizeT {
-	size0 = 0
-	size1 = 1
-	size2 = 2
-	size3 = 3
+	size0 = 0 // left untouched
+	size1 = 1 // prepended with 1-byte length
+	size2 = 2 // prepended with 2-bytes length
+	size3 = 3 // prepended with 3-bytes length
 }
 
 // 1. Helpers for an opaque with u8-sized characteristic.
 //
 // Some of TLS 1.3 types, like ContentType, HandshakeType,  NameType, etc mostly was u8-sized opaque.
 // This type of opaque commonly defined as `type SomeOpaque = u8` or similar thing.
+
+// pack_u8item packs single u8-sized item into bytes array
+@[inline]
+fn pack_u8item[T](t T) []u8 {
+	return [u8(t)]
+}
 
 // pack_u8list encodes array of u8-sized opaque in ts into bytes array.
 @[direct_array_access; inline]
@@ -65,12 +71,7 @@ fn pack_u8list_withlen[T](ts []T, n SizeT) ![]u8 {
 // size_u8list_withlen gets the capacities needed with specified length for ts.
 @[direct_array_access; inline]
 fn size_u8list_withlen[T](ts []T, n SizeT) int {
-	match n {
-		.size0 { return ts.len }
-		.size1 { return 1 + ts.len }
-		.size2 { return 2 + ts.len }
-		.size3 { return 3 + ts.len }
-	}
+	return ts.len + int(n)
 }
 
 // 2. Helpers for u16-sized opaque.
@@ -150,12 +151,7 @@ fn pack_u16list_withlen[T](ts []T, n SizeT) ![]u8 {
 // size_u16list_withlen tells the size needed to encode the list ts prepended with n-bytes length
 @[inline]
 fn size_u16list_withlen[T](ts []T, n SizeT) int {
-	match n {
-		.size0 { return 0 + 2 * ts.len }
-		.size1 { return 1 + 2 * ts.len }
-		.size2 { return 2 + 2 * ts.len }
-		.size3 { return 3 + 2 * ts.len }
-	}
+	return int(n) + 2 * ts.len
 }
 
 // size_u16item returns the length of serialized u16-sized opaque T.
@@ -228,7 +224,7 @@ fn parse_u16list_withlen[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
 // pack_raw_withlen encodes raw bytes r prepended with the n-bytes length.
 @[direct_array_access; inline]
 fn pack_raw_withlen(r []u8, n SizeT) ![]u8 {
-	mut out := []u8{cap: packlen_raw(r, n)}
+	mut out := []u8{cap: size_raw_withlen(r, n)}
 	match n {
 		.size0 {
 			// do nothing
@@ -263,15 +259,10 @@ fn pack_raw_withlen(r []u8, n SizeT) ![]u8 {
 	return out
 }
 
-// packlen_raw tells the capacities needed to serialize r prepended with n-bytes length.
+// size_raw_withlen tells the capacities needed to serialize r prepended with n-bytes length.
 @[inline]
-fn packlen_raw(r []u8, n SizeT) int {
-	match n {
-		.size0 { return r.len + 0 }
-		.size1 { return r.len + 1 }
-		.size2 { return r.len + 2 }
-		.size3 { return r.len + 3 }
-	}
+fn size_raw_withlen(r []u8, n SizeT) int {
+	return r.len + int(n)
 }
 
 // 4. Helpers for another arbitrary object
@@ -295,12 +286,7 @@ fn size_objlist[T](ts []T, cb_objsize fn (T) int) int {
 // Its accepts a callback cb_objsize for returning the size of encoded single item of T.
 @[direct_array_access; inline]
 fn size_objlist_withlen[T](ts []T, cb_objsize fn (T) int, n SizeT) int {
-	match n {
-		.size0 { return 0 + size_objlist[T](ts, cb_objsize) }
-		.size1 { return 1 + size_objlist[T](ts, cb_objsize) }
-		.size2 { return 2 + size_objlist[T](ts, cb_objsize) }
-		.size3 { return 3 + size_objlist[T](ts, cb_objsize) }
-	}
+	return size_objlist[T](ts, cb_objsize) + int(n)
 }
 
 // pack_objlist encodes arrays of object T in ts into bytes array.

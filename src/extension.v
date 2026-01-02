@@ -31,14 +31,10 @@ fn size_ext(r Extension) int {
 fn pack_ext(r Extension) ![]u8 {
 	mut out := []u8{cap: size_ext(r)}
 	// serialize ExtensionType, its a u16 value
-	xtipe := pack_u16item[ExtensionType](r.tipe)
-	out << xtipe
+	out << pack_u16item[ExtensionType](r.tipe)
 
 	// serialize extension data, includes this data length as u16 value
-	data_len := pack_u16item[int](data.len)
-	out << data_len
-	// finally puts the extesnion data
-	out << r.data
+	out << pack_raw_withlen(r.data, .size2)!
 
 	// returns the output
 	return out
@@ -85,7 +81,7 @@ fn (mut xs []Extension) append(e Extension) {
 	xs << e
 }
 
-// parse_extlist_withlen decodes bytes into arrays of Extension with prepended length
+// parse_extlist_withlen decodes bytes into arrays of Extension with 2-bytes length
 @[direct_array_access]
 fn parse_extlist_withlen(bytes []u8) ![]Extension {
 	if bytes.len < 2 {
