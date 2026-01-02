@@ -14,21 +14,21 @@ const min_extension_size = 4
 // Raw TLS 1.3 Extension
 //
 @[noinit]
-struct TlsExtension {
+struct Extension {
 mut:
 	tipe ExtensionType // u16 value
 	data []u8          // <0..2^16-1>
 }
 
-// size_ext returns the size of serialized TlsExtension, in bytes.
+// size_ext returns the size of serialized Extension, in bytes.
 @[inline]
-fn size_ext(r TlsExtension) int {
+fn size_ext(r Extension) int {
 	return min_extension_size + r.data.len
 }
 
-// pack_ext encodes TlsExtension into bytes array
+// pack_ext encodes Extension into bytes array
 @[inline]
-fn pack_ext(r TlsExtension) ![]u8 {
+fn pack_ext(r Extension) ![]u8 {
 	mut out := []u8{cap: size_ext(r)}
 	// serialize ExtensionType, its a u16 value
 	xtipe := pack_u16item[ExtensionType](r.tipe)
@@ -44,12 +44,12 @@ fn pack_ext(r TlsExtension) ![]u8 {
 	return out
 }
 
-// parse_ext decodes bytes array into TlsExtension
+// parse_ext decodes bytes array into Extension
 @[direct_array_access; inline]
-fn parse_ext(bytes []u8) !TlsExtension {
+fn parse_ext(bytes []u8) !Extension {
 	// minimally its should contain extension type and payload length
 	if bytes.len < min_extension_size {
-		return error('Bad TlsExtension bytes')
+		return error('Bad Extension bytes')
 	}
 	mut r := new_buffer(bytes)!
 
@@ -62,7 +62,7 @@ fn parse_ext(bytes []u8) !TlsExtension {
 	// read bytes of extension data
 	ext_data := r.read_at_least(int(length))!
 
-	return TlsExtension{
+	return Extension{
 		tipe: tipe
 		data: ext_data
 	}
@@ -70,7 +70,7 @@ fn parse_ext(bytes []u8) !TlsExtension {
 
 // append adds one item e into arrays xs
 @[direct_array_access]
-fn (mut xs []TlsExtension) append(e TlsExtension) {
+fn (mut xs []Extension) append(e Extension) {
 	if e in xs {
 		return
 	}
@@ -85,9 +85,9 @@ fn (mut xs []TlsExtension) append(e TlsExtension) {
 	xs << e
 }
 
-// parse_extlist_withlen decodes bytes into arrays of TlsExtension with prepended length
+// parse_extlist_withlen decodes bytes into arrays of Extension with prepended length
 @[direct_array_access]
-fn parse_extlist_withlen(bytes []u8) ![]TlsExtension {
+fn parse_extlist_withlen(bytes []u8) ![]Extension {
 	if bytes.len < 2 {
 		return error('Bad ExtensionList bytes')
 	}
@@ -97,11 +97,11 @@ fn parse_extlist_withlen(bytes []u8) ![]TlsExtension {
 	return parse_extlist(xs_bytes)!
 }
 
-// parse_extlist decodes bytes into arrays of TlsExtension, without prepended length
+// parse_extlist decodes bytes into arrays of Extension, without prepended length
 @[direct_array_access; inline]
-fn parse_extlist(bytes []u8) ![]TlsExtension {
+fn parse_extlist(bytes []u8) ![]Extension {
 	mut i := 0
-	mut xs := []TlsExtension{cap: bytes.len / 4}
+	mut xs := []Extension{cap: bytes.len / 4}
 	for i < bytes.len {
 		x := parse_ext(bytes[i..])!
 		xs.append(x)
@@ -113,13 +113,13 @@ fn parse_extlist(bytes []u8) ![]TlsExtension {
 
 // filtered_by_tipe filters xs by tipe and returns the new result.
 @[direct_array_access]
-fn (xs []TlsExtension) filtered_by_tipe(tipe ExtensionType) []TlsExtension {
+fn (xs []Extension) filtered_by_tipe(tipe ExtensionType) []Extension {
 	return xs.filter(it.tipe == tipe)
 }
 
 // returns if only single valid result filtered by tipe
 @[direct_array_access]
-fn (xs []TlsExtension) validate_with_filter(tipe ExtensionType) ![]TlsExtension {
+fn (xs []Extension) validate_with_filter(tipe ExtensionType) ![]Extension {
 	filtered := xs.filter(it.tipe == tipe)
 	if filtered.len != 1 {
 		return error('null or multiples tipe')
@@ -132,11 +132,11 @@ fn (xs []TlsExtension) validate_with_filter(tipe ExtensionType) ![]TlsExtension 
 
 // ext_from_sigscheme_list creates .signature_algorithms extesnion type from arrays of SignatureScheme
 @[direct_array_access]
-fn ext_from_sigscheme_list(ss []SignatureScheme) !TlsExtension {
+fn ext_from_sigscheme_list(ss []SignatureScheme) !Extension {
 	// The "extension_data" field of these extensions contains a SignatureSchemeList value
 	// where its values was limited by <2..2^16-2>;
-	xs_payload := pack_u16list_with_len[SignatureScheme](ss, 2)!
-	return TlsExtension{
+	xs_payload := pack_u16list_with_len[SignatureScheme](ss, .size2)!
+	return Extension{
 		tipe: .signature_algorithms
 		data: xs_payload
 	}

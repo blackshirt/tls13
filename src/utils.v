@@ -158,9 +158,9 @@ fn size_u16list_withlen[T](ts []T, n SizeT) int {
 	}
 }
 
-// packlen_u16item returns the length of serialized u16-sized opaque T.
+// size_u16item returns the length of serialized u16-sized opaque T.
 @[inline]
-fn packlen_u16item[T](t T) int {
+fn size_u16item[T](t T) int {
 	return 2
 }
 
@@ -306,12 +306,12 @@ fn size_objlist_withlen[T](ts []T, cb_objsize fn (T) int, n SizeT) int {
 // pack_objlist encodes arrays of object T in ts into bytes array.
 // Its accepts two's callback to help for determining correct behaviour, ie,
 // - cb_objsize, a callback for determining the size of encoded single item of object T
-// - cb_objpacker, a callback for serializing single item of object T into bytes array
+// - cb_objpack, a callback for serializing single item of object T into bytes array
 @[direct_array_access; inline]
-fn pack_objlist[T](ts []T, cb_objpacker fn (T) ![]u8, cb_objsize fn (T) int) ![]u8 {
+fn pack_objlist[T](ts []T, cb_objpack fn (T) ![]u8, cb_objsize fn (T) int) ![]u8 {
 	mut out := []u8{cap: size_objlist[T](ts, cb_objsize)}
 	for item in ts {
-		out << cb_objpacker(item)!
+		out << cb_objpack(item)!
 	}
 	return out
 }
@@ -319,13 +319,11 @@ fn pack_objlist[T](ts []T, cb_objpacker fn (T) ![]u8, cb_objsize fn (T) int) ![]
 // pack_objlist_withlen  encodes arrays of object T in ts into bytes array prepended with n-bytes length.
 // See `pack_objlist` docs for the detail.
 @[direct_array_access; inline]
-fn pack_objlist_withlen[T](ts []T, cb_objpacker fn (T) ![]u8, cb_objsize fn (T) int, n SizeT) ![]u8 {
-	// get the size of output includes the specified n length
-	cap := size_objlist_withlen[T](ts, cb_objsize, n)
-	mut out := []u8{cap: cap}
-
+fn pack_objlist_withlen[T](ts []T, cb_objpack fn (T) ![]u8, cb_objsize fn (T) int, n SizeT) ![]u8 {
 	// the length of array of object, in bytes
 	length := size_objlist[T](ts, cb_objsize)
+	// setup buffer capacities
+	mut out := []u8{cap: length + int(n)}
 	match n {
 		.size0 {
 			// do nothing
@@ -334,7 +332,7 @@ fn pack_objlist_withlen[T](ts []T, cb_objpacker fn (T) ![]u8, cb_objsize fn (T) 
 			if length > max_u8 {
 				return error('length []T payload exceeds max_u8')
 			}
-			out << u8(len)
+			out << u8(length)
 		}
 		.size2 {
 			if length > max_u16 {
@@ -351,7 +349,7 @@ fn pack_objlist_withlen[T](ts []T, cb_objpacker fn (T) ![]u8, cb_objsize fn (T) 
 		}
 	}
 	// encodes the object list payload
-	out << pack_objlist[T](ts, cb_objpacker, cb_objsize)!
+	out << pack_objlist[T](ts, cb_objpack, cb_objsize)!
 
 	return out
 }
