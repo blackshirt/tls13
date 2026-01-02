@@ -8,9 +8,11 @@ module tls13
 
 import encoding.binary
 
+// minimal extension size, in bytes
 const min_extension_size = 4
 
 // Raw TLS 1.3 Extension
+//
 @[noinit]
 struct TlsExtension {
 mut:
@@ -18,16 +20,16 @@ mut:
 	data []u8          // <0..2^16-1>
 }
 
-// packlen_ext returns the length of serialized TlsExtension, in bytes.
+// size_ext returns the size of serialized TlsExtension, in bytes.
 @[inline]
-fn packlen_ext(r TlsExtension) int {
+fn size_ext(r TlsExtension) int {
 	return min_extension_size + r.data.len
 }
 
 // pack_ext encodes TlsExtension into bytes array
 @[inline]
 fn pack_ext(r TlsExtension) ![]u8 {
-	mut out := []u8{cap: packlen_ext(r)}
+	mut out := []u8{cap: size_ext(r)}
 	// serialize ExtensionType, its a u16 value
 	xtipe := pack_u16item[ExtensionType](r.tipe)
 	out << xtipe
@@ -83,63 +85,21 @@ fn (mut xs []TlsExtension) append(e TlsExtension) {
 	xs << e
 }
 
-// pack_xslist encodes arrays of TlsExtension into bytes array.
-@[direct_array_access; inline]
-fn pack_xslist(xs []TlsExtension) ![]u8 {
-	mut out := []u8{cap: packlen_xslist(xs)}
-	for x in xs {
-		out << pack_ext(x)!
-	}
-	return out
-}
-
-// pack_xslist_withlen encodes xs into bytes arrays prepended with 2-bytes length (u16-sized)
-@[direct_array_access; inline]
-fn pack_xslist_withlen(xs []TlsExtension) ![]u8 {
-	mut out := []u8{cap: packlen_xslist_withlen(xs)}
-
-	// encoded extension payload length
-	mut bol2 := []u8{len: 2}
-	binary.big_endian_put_u16(mut bol2, packlen_xslist(xs))
-	out << bol2
-
-	// serializes the extension payload
-	out << pack_xslist(xs)!
-
-	return out
-}
-
-// packlen_xslist_withlen returns the length of serialized xs prepended with the u16-sized length
-@[direct_array_access; inline]
-fn packlen_xslist_withlen(xs []TlsExtension) int {
-	return 2 + packlen_xslist(xs)
-}
-
-// packlen_xslist tells the length of serialized xs, without the prepended length
-@[direct_array_access; inline]
-fn packlen_xslist(xs []TlsExtension) int {
-	mut n := 0
-	for e in xs {
-		n += packlen_ext(e)
-	}
-	return n
-}
-
-// parse_xslist_withlen decodes bytes into arrays of TlsExtension with prepended length
+// parse_extlist_withlen decodes bytes into arrays of TlsExtension with prepended length
 @[direct_array_access]
-fn parse_xslist_withlen(bytes []u8) ![]TlsExtension {
+fn parse_extlist_withlen(bytes []u8) ![]TlsExtension {
 	if bytes.len < 2 {
 		return error('Bad ExtensionList bytes')
 	}
 	mut r := new_buffer(bytes)!
 	length := r.read_u16()!
 	xs_bytes := r.read_at_least(int(length))!
-	return parse_xslist(xs_bytes)!
+	return parse_extlist(xs_bytes)!
 }
 
-// parse_xslist decodes bytes into arrays of TlsExtension, without prepended length
+// parse_extlist decodes bytes into arrays of TlsExtension, without prepended length
 @[direct_array_access; inline]
-fn parse_xslist(bytes []u8) ![]TlsExtension {
+fn parse_extlist(bytes []u8) ![]TlsExtension {
 	mut i := 0
 	mut xs := []TlsExtension{cap: bytes.len / 4}
 	for i < bytes.len {

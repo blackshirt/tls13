@@ -17,6 +17,9 @@ const tls11_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x00]
 
 // minimal handshake message size
 const min_hskmsg_size = 4
+// Used in ClientHello and ServerHello
+const min_random_size = 32
+const max_sessid_size = 32
 
 // Handshake represents Tls 1.3 handshake message.
 //
@@ -269,8 +272,6 @@ fn (h HandshakePayload) pack() ![]u8 {
 // Minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
 //
 const min_chello_size = 51
-const min_chello_random_size = 32
-const max_chello_sessid_size = 32
 const min_chello_cmeths_size = 1
 const max_chello_cmeths_size = max_u8
 
@@ -362,7 +363,7 @@ fn pack_chello(c ClientHello) ![]u8 {
 	out << c.cmeths
 
 	// encodes extension list prepended with u16-sized length
-	out << pack_xslist_withlen(c.xslist)!
+	out << pack_extlist_withlen(c.xslist)!
 
 	return out
 }
@@ -397,7 +398,7 @@ fn parse_chello(bytes []u8) !ClientHello {
 	// read extension list with prepended length
 	xlen := r.read_u16()
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_xslist(xs_bytes)!
+	xs := parse_extlist(xs_bytes)!
 
 	// build the result
 	ch := ClientHello{
@@ -469,13 +470,13 @@ mut:
 }
 
 @[inline]
-fn (s ServerHello) check_shello() ! {
+fn (s ServerHello) validate_srvhello() ! {
 	return error('TODO')
 }
 
-// packlen_shello return the length of serialized ServerHello s
+// size_srvhello return the length of serialized single item of ServerHello s
 @[inline]
-fn packlen_shello(s ServerHello) int {
+fn size_srvhello(s ServerHello) int {
 	mut n := 0
 	// 2-bytes of TlsVersion
 	n += 2
@@ -493,11 +494,11 @@ fn packlen_shello(s ServerHello) int {
 	return n
 }
 
-// pack_shello encodes ServerHello s into bytes array.
+// pack_srvhello encodes a single item of ServerHello s into bytes array.
 @[inline]
-fn pack_shello(s ServerHello) ![]u8 {
-	s.check_shello()!
-	mut out := []u8{cap: packlen_shello(s)}
+fn pack_srvhello(s ServerHello) ![]u8 {
+	s.validate_srvhello()!
+	mut out := []u8{cap: size_srvhello(s)}
 
 	// encodes version, its an u16 value
 	out << pack_u16item[TlsVersion](s.version)
@@ -506,8 +507,7 @@ fn pack_shello(s ServerHello) ![]u8 {
 	out << s.random
 
 	// encodes ServerHello sessid, prepended with 1-byte length
-	out << u8(s.sessid.len)
-	out << s.sessid
+	out << pack_raw_withlen(s.sessid, .size1)!
 
 	// encodes choosen CipherSuite, its an u16-based value
 	out << pack_u16item[CipherSuite](s.csuite)
@@ -515,15 +515,16 @@ fn pack_shello(s ServerHello) ![]u8 {
 	// encodes 1-byte ServerHello compression_method
 	out << s.cmeth
 
-	// encodes extension list prepended with u16-sized length
-	out << pack_xslist_withlen(s.xslist)!
+	// encodes extension list prepended with 2-bytes length
+	out << pack_objlist_withlen[TlsExtension](s.xslist, pack_srvhello, size_srvhello,
+		.size2)!
 
 	return out
 }
 
-// parse_shello decodes bytes array into ServerHello and validates them.
+// parse_srvhello decodes bytes array into ServerHello and validates them.
 @[direct_array_access]
-fn parse_shello(bytes []u8) !ServerHello {
+fn parse_srvhello(bytes []u8) !ServerHello {
 	if bytes.len < min_shello_size {
 		return error('underflow ServerHello bytes')
 	}
@@ -549,7 +550,7 @@ fn parse_shello(bytes []u8) !ServerHello {
 	// read extension list with prepended length
 	xlen := r.read_u16()
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_xslist(xs_bytes)!
+	xs := parse_extlist(xs_bytes)!
 
 	// build ServerHello message
 	sh := ServerHello{
@@ -561,7 +562,7 @@ fn parse_shello(bytes []u8) !ServerHello {
 		xslist:  xs
 	}
 	// validates
-	sh.check_shello()!
+	sh.validate_srvhello()!
 
 	return sh
 }
@@ -646,7 +647,7 @@ fn pack_creq(cr CertificateRequest) ![]u8 {
 	out << cr.opaque
 
 	// encodes certificate request extension list with ltheir ength
-	out << pack_xslist_withlen(cr.xslist)!
+	out << pack_extlist_withlen(cr.xslist)!
 
 	return out
 }
@@ -666,7 +667,7 @@ fn parse_creq(b []u8) !CertificateRequest {
 	// read extension list with prepended length
 	xlen := r.read_u16()
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_xslist(xs_bytes)!
+	xs := parse_extlist(xs_bytes)!
 
 	cr := CertificateRequest{
 		opaque: opaque_data
@@ -758,7 +759,7 @@ fn pack_centry(ce CertificateEntry) ![]u8 {
 	out << ce.opaque
 
 	// encodes certificate extension list with length
-	out << pack_xslist_withlen(c.xslist)!
+	out << pack_extlist_withlen(c.xslist)!
 
 	return out
 }
@@ -779,7 +780,7 @@ fn parse_centry(b []u8) !CertificateEntry {
 	// read extension list with prepended length
 	xlen := r.read_u16()
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_xslist(xs_bytes)!
+	xs := parse_extlist(xs_bytes)!
 
 	ce := CertificateEntry{
 		opaque: opaque
@@ -1112,7 +1113,7 @@ fn pack_nst(st NewSessionTicket) ![]u8 {
 	// encodes nst ticket with 2-bytes length
 	out << pack_raw_withlen(st.ticket, 2)!
 	// encodes extension list with their length
-	out << pack_xslist_withlen(st.xslist)!
+	out << pack_extlist_withlen(st.xslist)!
 
 	return out
 }
@@ -1134,7 +1135,7 @@ fn parse_nst(b []u8) !NewSessionTicket {
 	// read extension list with prepended length
 	xlen := r.read_u16()
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_xslist(xs_bytes)!
+	xs := parse_extlist(xs_bytes)!
 
 	st := NewSessionTicket{
 		lifetime: lifetime
