@@ -156,7 +156,7 @@ fn (hs []Handshake) pack() ![]u8 {
 	return out
 }
 
-type HandshakePayload = Certificate
+type HskPayload = Certificate
 	| CertificateRequest
 	| CertificateVerify
 	| ClientHello
@@ -167,7 +167,7 @@ type HandshakePayload = Certificate
 	| NewSessionTicket
 	| ServerHello
 
-fn (h HandshakePayload) tipe() !HandshakeType {
+fn (h HskPayload) tipe() !HandshakeType {
 	match h {
 		Certificate { return .certificate }
 		CertificateRequest { return .certificate_request }
@@ -182,15 +182,15 @@ fn (h HandshakePayload) tipe() !HandshakeType {
 	}
 }
 
-// pack_to_handshake_bytes build Handshake message from HandshakePayload and then serializes it to bytes.
-fn (h HandshakePayload) pack_to_handshake_bytes() ![]u8 {
+// pack_to_handshake_bytes build Handshake message from HskPayload and then serializes it to bytes.
+fn (h HskPayload) pack_to_handshake_bytes() ![]u8 {
 	hsk := h.pack_to_handshake()!
 	out := hsk.pack()!
 	return out
 }
 
-// pack_to_handshake build Handshake message from HandshakePayload
-fn (h HandshakePayload) pack_to_handshake() !Handshake {
+// pack_to_handshake build Handshake message from HskPayload
+fn (h HskPayload) pack_to_handshake() !Handshake {
 	tipe := h.tipe()!
 	payload := h.pack()!
 
@@ -201,7 +201,7 @@ fn (h HandshakePayload) pack_to_handshake() !Handshake {
 	return hsk
 }
 
-fn (h HandshakePayload) pack() ![]u8 {
+fn (h HskPayload) pack() ![]u8 {
 	match h {
 		Certificate {
 			cert := h as Certificate
@@ -315,7 +315,7 @@ fn size_chello(c ClientHello) int {
 	n += 1 + c.cmeths.len
 
 	// extension list with prepended 2-bytes length
-	n += size_objlist_withlen[Extension](s.xslist, size_ext, .size2)
+	n += size_extlist_withlen(s.xslist, .size2)
 
 	return n
 }
@@ -343,7 +343,7 @@ fn pack_chello(c ClientHello) ![]u8 {
 	out << pack_raw_withlen(c.cmeths, .size1)
 
 	// encodes extension list with 2-bytes length
-	out << pack_objlist_withlen[Extension](c.xslist, pack_ext, size_ext, .size2)!
+	out << pack_extlist_withlen(c.xslist, .size2)!
 
 	return out
 }
@@ -469,7 +469,7 @@ fn size_shello(s ServerHello) int {
 	// 1-byte compression_method
 	n += 1
 	// extension list with prepended 2-bytes length
-	n += size_objlist_withlen[Extension](s.xslist, size_ext, .size2)
+	n += size_extlist_withlen(s.xslist, .size2)
 
 	return n
 }
@@ -497,7 +497,7 @@ fn pack_shello(s ServerHello) ![]u8 {
 
 	// encodes extension list prepended with 2-bytes length,
 	// with callback extension packer and extension size getter
-	out << pack_objlist_withlen[Extension](s.xslist, pack_ext, size_ext, .size2)!
+	out << pack_extlist_withlen(s.xslist, .size2)!
 
 	return out
 }
@@ -570,7 +570,7 @@ type EncryptedExtensions = []Extension // <0..2^16-1>
 
 @[inline]
 fn pack_ee(ee EncryptedExtensions) ![]u8 {
-	return pack_objlist_withlen[Extension](e, pack_ext, size_ext, .size2)!
+	return pack_extlist_withlen(ee, .size2)!
 }
 
 @[direct_array_access; inline]
@@ -608,7 +608,7 @@ fn (cr CertificateRequest) check_creq() ! {
 fn size_creq(cr CertificateRequest) int {
 	mut n := 0
 	n += 1 + cr.opaque.len
-	n += size_objlist_withlen[Extension](cr.xslist, size_ext, .size2)
+	n += size_extlist_withlen(cr.xslist, .size2)
 	return n
 }
 
@@ -622,7 +622,7 @@ fn pack_creq(cr CertificateRequest) ![]u8 {
 	out << pack_raw_withlen(cr.opaque, .size1)!
 
 	// encodes certificate request extension list with 2-bytes length
-	out << pack_objlist_withlen[Extension](cr.xslist, pack_ext, size_ext, .size2)!
+	out << pack_extlist_withlen(cr.xslist, .size2)!
 
 	return out
 }
@@ -714,7 +714,7 @@ fn (ce CertificateEntry) check_ce() ! {
 fn size_centry(ce CertificateEntry) int {
 	mut n := 0
 	n += 3 + ce.opaque.len
-	n += size_objlist_withlen[Extension](ce.xslist, size_ext, .size2)
+	n += size_extlist_withlen(ce.xslist, .size2)
 	return n
 }
 
@@ -731,7 +731,7 @@ fn pack_centry(ce CertificateEntry) ![]u8 {
 	out << pack_raw_withlen(ce.opaque, .size3)!
 
 	// encodes certificate extension list with 2-bytes length
-	out << pack_objlist_withlen[Extension](ce.xslist, pack_ext, size_ext, .size2)!
+	out << pack_extlist_withlen(ce.xslist, .size2)!
 
 	return out
 }
@@ -1005,7 +1005,7 @@ fn size_nst(st NewSessionTicket) int {
 	n += st.ticket.len
 
 	// extension list with 2-bytes length
-	n += size_objlist_withlen[Extension](st.xslist, size_ext, .size2)
+	n += size_extlist_withlen(st.xslist, .size2)
 
 	return n
 }
@@ -1035,7 +1035,7 @@ fn pack_nst(st NewSessionTicket) ![]u8 {
 	out << pack_raw_withlen(st.ticket, .size2)!
 
 	// encodes extension list with 2-bytes length
-	out << pack_objlist_withlen[Extension](st.xslist, pack_ext, size_ext, .size2)!
+	out << pack_extlist_withlen(st.xslist, .size2)!
 
 	return out
 }

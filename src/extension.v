@@ -26,6 +26,18 @@ fn size_ext(r Extension) int {
 	return min_extension_size + r.data.len
 }
 
+// the size of serialized extension list without the length
+@[direct_array_access; inline]
+fn size_extlist(xs []Extension) int {
+	return size_objlist[Extension](xs, size_ext)
+}
+
+// the size of serialized extension list with n-bytes length
+@[direct_array_access; inline]
+fn size_extlist_withlen(xs []Extension, n SizeT) int {
+	return size_objlist_withlen[Extension](xs, size_ext, n)
+}
+
 // pack_ext encodes Extension into bytes array
 @[inline]
 fn pack_ext(r Extension) ![]u8 {
@@ -38,6 +50,19 @@ fn pack_ext(r Extension) ![]u8 {
 
 	// returns the output
 	return out
+}
+
+// pack_extlist encodes extension list xs into bytes array. Its dont encode the length.
+@[direct_array_access; inline]
+fn pack_extlist(xs []Extension) ![]u8 {
+	return pack_objlist[Extension](xs, pack_ext, size_ext)!
+}
+
+// pack_extlist_withlen encodes extension list xs into bytes array, includes the n-bytes length
+// specified in n parameter. Its commonly use u16-sized length, by specifying .size2 enum value.
+@[direct_array_access; inline]
+fn pack_extlist_withlen(xs []Extension, n SizeT) ![]u8 {
+	return pack_objlist_withlen[Extension](xs, pack_ext, size_ext, n)!
 }
 
 // parse_ext decodes bytes array into Extension

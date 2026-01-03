@@ -1,5 +1,21 @@
 module tls13
 
+@[noinit]
+struct SupportedVersionExt {
+mut:
+	// for HelloRetryRequest and ServerHello mssg
+	ver Version
+	// for ClientHello message
+	verlist []Version
+}
+
+fn size_spv(s SupportedVersionExt, client bool) int {
+	if client {
+		return 2 * s.verlist.len
+	}
+	return 2
+}
+
 struct ClientSpV {
 	versions []Version // Version versions<2..254>;
 }
