@@ -147,15 +147,31 @@ fn unpack_to_multi_handshake(b []u8) ![]Handshake {
 	return hs
 }
 
-fn (hs []Handshake) pack() ![]u8 {
-	mut out := []u8{}
-	for h in hs {
-		o := h.pack()!
-		out << o
-	}
-	return out
+// the size of encoded handshake list
+@[direct_array_access; inline]
+fn size_hsklist(hs []Handshake) int {
+	return size_objlist[Handshake](hs, size_hsk)
 }
 
+// the size of encoded handshake list with n-bytes length
+@[direct_array_access; inline]
+fn size_hsklist_withlen(hs []Handshake, n SizeT) int {
+	return size_objlist_withlen[Handshake](hs, size_hsk, n)
+}
+
+// encodes handshake list
+@[direct_array_access]
+fn pack_hsklist(hs []Handshake) ![]u8 {
+	return pack_objlist[Handshake](hs, pack_hsk, size_hsk)!
+}
+
+// encodes handshake list with n-bytes length
+@[direct_array_access; inline]
+fn pack_hsklist_withlen(hs []Handshake, n SizeT) ![]u8 {
+	return pack_objlist_withlen[Handshake](hs, pack_hsk, size_hsk, n)!
+}
+
+// Supported TLS 1.3 handshake payload
 type HskPayload = Certificate
 	| CertificateRequest
 	| CertificateVerify
@@ -163,10 +179,12 @@ type HskPayload = Certificate
 	| EncryptedExtensions
 	| EndOfEarlyData
 	| Finished
+	| HelloRetryRequest
 	| KeyUpdate
 	| NewSessionTicket
 	| ServerHello
 
+// the handshake type of this HskPayload
 fn (h HskPayload) tipe() !HandshakeType {
 	match h {
 		Certificate { return .certificate }
@@ -176,6 +194,7 @@ fn (h HskPayload) tipe() !HandshakeType {
 		EncryptedExtensions { return .encrypted_extensions }
 		EndOfEarlyData { return .end_of_early_data }
 		Finished { return .finished }
+		HelloRetryRequest { return .hello_retry_request }
 		KeyUpdate { return .key_update }
 		ServerHello { return .server_hello }
 		NewSessionTicket { return .new_session_ticket }
@@ -201,7 +220,9 @@ fn (h HskPayload) pack_to_handshake() !Handshake {
 	return hsk
 }
 
-fn (h HskPayload) pack() ![]u8 {
+// pack_hskpayload encodes handshake payload h into bytes array
+@[inline]
+fn pack_hskpayload(h HskPayload) ![]u8 {
 	match h {
 		Certificate {
 			cert := h as Certificate
@@ -229,7 +250,12 @@ fn (h HskPayload) pack() ![]u8 {
 		}
 		Finished {
 			fin := h as Finished
-			return pack_raw_withlen(fin.verify_data, .size0)!
+			// return verify_data directly
+			return fin.verify_data
+		}
+		HelloRetryRequest {
+			hrr := h as HelloRetryRequest
+			return pack_hrr(hrr)!
 		}
 		KeyUpdate {
 			ku := h as KeyUpdate
@@ -263,7 +289,7 @@ const max_chello_cmeths_size = max_u8
 @[noinit]
 struct ClientHello {
 mut:
-	version Version = tls_v12
+	version Version = .v12
 	// 32-bytes of random bytes
 	random []u8
 	// legacy session id, <0..32> length
@@ -439,7 +465,7 @@ const min_shello_size = 40
 @[noinit]
 struct ServerHello {
 mut:
-	version Version = tls_v12
+	version Version = .v12
 	random  []u8
 	sessid  []u8 // <0..32>;
 	// choosen ciphersuite
@@ -554,6 +580,22 @@ struct HelloRetryRequest {
 	ServerHello
 }
 
+// pack_hrr encodes HelloRetryRequest message h into bytes array.
+@[inline]
+fn pack_hrr(h HelloRetryRequest) ![]u8 {
+	return pack_shello(h.ServerHello)!
+}
+
+@[direct_array_access; inline]
+fn parse_hrr(bytes []u8) !HelloRetryRequest {
+	sh := parse_shello(bytes)!
+	// the ServerHello random should be a helloretry_magic
+	if subtle.constant_time_compare(sh.random, helloretry_magic) != 1 {
+		return error('not a hrr random')
+	}
+	return HelloRetryRequest{sh}
+}
+
 // is_hrr check whether this ServerHello is a HelloRetryRequest message
 @[inline]
 fn (sh ServerHello) is_hrr() bool {
@@ -568,14 +610,16 @@ struct EndOfEarlyData {}
 @[noinit]
 type EncryptedExtensions = []Extension // <0..2^16-1>
 
+// pack_ee encodes EncryptedExtensions into bytes array
 @[inline]
 fn pack_ee(ee EncryptedExtensions) ![]u8 {
 	return pack_extlist_withlen(ee, .size2)!
 }
 
+// parse_ee decodes bytes into EncryptedExtensions
 @[direct_array_access; inline]
-fn parse_ee(bytes []u8) ![]Extension {
-	return parse_extlist_withlen(bytes)!
+fn parse_ee(bytes []u8) !EncryptedExtensions {
+	return EncryptedExtensions(parse_extlist_withlen(bytes)!)
 }
 
 // B.3.2.  Server Parameters Messages
