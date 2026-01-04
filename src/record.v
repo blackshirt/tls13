@@ -391,8 +391,9 @@ fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 // The actual content type of the record is found in TLSInnerPlaintext.type after decryption
 @[noinit]
 struct TlsCiphertext {
-	otype ContentType = .application_data
 mut:
+	// opaque type
+	otype ContentType = .application_data
 	// legacy version
 	version Version = .v12
 	// u16-sized payload

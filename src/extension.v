@@ -16,8 +16,8 @@ const min_extension_size = 4
 @[noinit]
 struct Extension {
 mut:
-	tipe ExtensionType // u16 value
-	data []u8          // <0..2^16-1>
+	tipe Extensiotipe // u16 value
+	data []u8         // <0..2^16-1>
 }
 
 // size_ext returns the size of serialized Extension, in bytes.
@@ -42,8 +42,8 @@ fn size_extlist_withlen(xs []Extension, n SizeT) int {
 @[inline]
 fn pack_ext(r Extension) ![]u8 {
 	mut out := []u8{cap: size_ext(r)}
-	// serialize ExtensionType, its a u16 value
-	out << pack_u16item[ExtensionType](r.tipe)
+	// serialize Extensiotipe, its a u16 value
+	out << pack_u16item[Extensiotipe](r.tipe)
 
 	// serialize extension data, includes this data length as u16 value
 	out << pack_raw_withlen(r.data, .size2)!
@@ -74,7 +74,7 @@ fn parse_ext(bytes []u8) !Extension {
 	}
 	mut r := new_buffer(bytes)!
 
-	// read ExtensionType
+	// read Extensiotipe
 	t := r.read_u16()!
 	tipe := new_exttype(t)!
 
@@ -134,13 +134,13 @@ fn parse_extlist(bytes []u8) ![]Extension {
 
 // filtered_by_tipe filters xs by tipe and returns the new result.
 @[direct_array_access]
-fn (xs []Extension) filtered_by_tipe(tipe ExtensionType) []Extension {
+fn (xs []Extension) filtered_by_tipe(tipe Extensiotipe) []Extension {
 	return xs.filter(it.tipe == tipe)
 }
 
 // returns if only single valid result filtered by tipe
 @[direct_array_access]
-fn (xs []Extension) validate_with_filter(tipe ExtensionType) ![]Extension {
+fn (xs []Extension) validate_with_filter(tipe Extensiotipe) ![]Extension {
 	filtered := xs.filter(it.tipe == tipe)
 	if filtered.len != 1 {
 		return error('null or multiples tipe')
@@ -161,4 +161,126 @@ fn ext_from_sigscheme_list(ss []SignatureScheme) !Extension {
 		tipe: .signature_algorithms
 		data: xs_payload
 	}
+}
+
+// B.3.1.2.  Cookie Extension
+// https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.3.1.2
+//
+// struct {
+//          opaque cookie<1..2^16-1>;
+//      } Cookie;
+//
+const min_cookie_size = 1
+const max_cookie_size = max_u16
+
+// TLS 1.3 Cookie extension
+type Cookie = []u8
+
+// new_cookie creates cookies extension from bytes array.
+@[direct_array_access; inline]
+fn new_cookie(bytes []u8) !Cookie {
+	if bytes < min_cookie_size || btyes.len > max_cookie_size {
+		return error('invalid bytes length')
+	}
+	return Cookie(bytes)
+}
+
+// TLS 1.3 ServerName extesnion
+//
+// https://datatracker.ietf.org/doc/html/rfc6066#section-3
+// struct {
+//        NameType tipe;
+//        select (tipe) {
+//            case host_name: HostName;
+//        } name;
+//    } ServerName;
+//
+//    enum {
+//        host_name(0), (255)
+//    } NameType;
+//
+//    opaque HostName<1..2^16-1>;
+//
+//    struct {
+//        ServerName server_name_list<1..2^16-1>
+//    } ServerNameList;
+// opaque HostName<1..2^16-1>
+//
+const min_srvname_size = 3
+
+// Hostname was non-null bytes array, limit to max_u16 bytes
+type HostName = []u8
+
+@[noinit]
+struct ServerName {
+mut:
+	tipe NameType
+	name []u8
+}
+
+// new new_srvname was server name identification (SNI)
+@[inline]
+fn new_srvname(name string) !ServerName {
+	if !name.is_ascii() {
+		return error('not ASCII encoded byte string')
+	}
+	return ServerName{
+		tipe: .host_name
+		name: name.bytes()
+	}
+}
+
+@[inline]
+fn size_srvname(s ServerName) int {
+	mut n := 0
+	n += 1 // for tipe
+	match s.tipe {
+		.host_name {
+			n += size_raw_withlen(s.name, .size2)
+		}
+		else {
+			panic('unsupported name type')
+		}
+	}
+	return n
+}
+
+@[inline]
+fn pack_srvname(s ServerName) ![]u8 {
+	mut out := []u8{cap: size_srvname(s)}
+
+	out << u8(s.tipe)
+	match s.tipe {
+		.host_name {
+			n += pack_raw_withlen(s.name, .size2)
+		}
+		else {
+			return error('unsupported name type')
+		}
+	}
+	return out
+}
+
+@[direct_array_access; inline]
+fn parse_srvname(b []u8) !ServerName {
+	if b.len < min_srvname_size {
+		return error('srvname parse bytes underflow')
+	}
+	mut r := new_buffer(b)!
+
+	// read one byte of tipe
+	nt := r.read_u8()!
+	if nt != u8(NameType.host_name) {
+		return error('unsupported NameType')
+	}
+	// read host_name length
+	n := r.read_u16()!
+	hn := r.read_at_least(int(n))!
+
+	sv := ServerName{
+		tipe: new_nametype(nt)!
+		name: hn
+	}
+
+	return sv
 }

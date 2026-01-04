@@ -254,7 +254,7 @@ fn new_hsktype(val u8) !HandshakeType {
 	}
 }
 
-// NameType = u8
+// NameType = u8 for ServerName extension
 enum NameType as u8 {
 	host_name    = 0x00
 	unknown_name = 0xff
