@@ -41,19 +41,21 @@ fn pack_u8list[T](ts []T) []u8 {
 // prepended with the length specified in n.
 @[direct_array_access]
 fn pack_u8list_withlen[T](ts []T, n SizeT) ![]u8 {
+	// for this type of item, the size commonly only limited to max_u8 size,
+	// and rarely supports for 3-bytes length.
 	c := size_u8list_withlen[T](ts, n)
 	mut out := []u8{cap: c}
 	match n {
-		0 {
+		.size0 {
 			// do nothing
 		}
-		1 {
+		.size1 {
 			if ts.len > max_u8 {
 				return error('exceed max_u8')
 			}
 			out << u8(ts.len)
 		}
-		2 {
+		.size2 {
 			if ts.len > max_u16 {
 				return error('exceed max_u16')
 			}
@@ -200,14 +202,15 @@ fn parse_u16list[T](bytes []u8, cb_make fn (u16) !T) ![]T {
 // parse_u16list_withlen decodes bytes into arrays of item T with cb_make was a constructor of T from u16 value.
 // Its also parsing prepended length of array of item.
 @[direct_array_access]
-fn parse_u16list_withlen[T](bytes []u8, cb_make fn (u16) !T, n int) ![]T {
+fn parse_u16list_withlen[T](bytes []u8, cb_make fn (u16) !T, n SizeT) ![]T {
 	mut r := new_buffer(bytes)!
 
 	// gets the length part, its only supports 1 or 2 bytes-length
 	mut length := 0
 	match n {
-		1 { length = int(r.read_u8()!) }
-		2 { length = int(r.read_u16()!) }
+		.size0 { return error('use parse_u16list directly') }
+		.size1 { length = int(r.read_u8()!) }
+		.size2 { length = int(r.read_u16()!) }
 		else { return error('unsupported length') }
 	}
 	src := r.read_at_least(length)!
