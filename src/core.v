@@ -5,6 +5,50 @@
 // Some core of TLS 1.3 opaque definition
 module tls13
 
+// TLS 1.3 Version
+// TLS 1.3 ProtocolVersion;
+//
+// The rfc8446 document describes TLS 1.3, which uses the version 0x0304.
+// This version value is historical, deriving from the use of 0x0301 for TLS 1.0 and 0x0300 for SSL 3.0.
+// In order to maximize backward compatibility, a record containing an initial ClientHello SHOULD have
+// version 0x0301 (reflecting TLS 1.0) and a record containing a second
+// ClientHello or a ServerHello MUST have version 0x0303 (reflecting TLS 1.2).
+enum Version as u16 {
+	v13 = 0x0304 // TLS 1.3
+	v12 = 0x0303 // TLS 1.2
+	v11 = 0x0302 // TLS 1.1
+	v10 = 0x0301 // TLS 1.0
+	v00 = 0x0300 // SSL 3.0, predecessor of TLS
+}
+
+// str represents TLS version as a common name string
+fn (v Version) str() string {
+	match v {
+		.v13 { return 'TLS 1.3' }
+		.v12 { return 'TLS 1.2' }
+		.v11 { return 'TLS 1.1' }
+		.v10 { return 'TLS 1.0' }
+		.v00 { return 'SSL 3.0' } // TLS 0.0
+	}
+}
+
+// new_version creates TLS version from u16 value
+@[inline]
+fn new_version(val u16) !Version {
+	match val {
+		// vfmt off
+		u16(0x0300) { return .v00 }
+		u16(0x0301) { return .v10 }
+		u16(0x0302) { return .v11 }
+		u16(0x0303) { return .v12 }
+		u16(0x0304) { return .v13 }
+		else {
+			return error('unsupported Version value')
+		}
+		// vfmt on
+	}
+}
+
 // ContentType is content type of TLS 1.3 record defined as an u8 value
 //
 enum ContentType as u8 {
@@ -210,7 +254,7 @@ fn new_hsktype(val u8) !HandshakeType {
 	}
 }
 
-// NameType = u8
+// NameType = u8 for ServerName extension
 enum NameType as u8 {
 	host_name    = 0x00
 	unknown_name = 0xff
@@ -552,5 +596,18 @@ fn (c CipherSuite) str() string {
 		.tls_emptyrenegotiationinfo_scsv {
 			return 'TLS_EMPTYRENEGOTIATIONINFO_SCSV'
 		}
+	}
+}
+
+// ChangeCipherSpec
+enum ChangeCipherSpec as u8 {
+	ccs = 0x01
+}
+
+@[inline]
+fn new_ccs(v u8) !ChangeCipherSpec {
+	match v {
+		0x01 { return .ccs }
+		else { return error('unsupported ccs type') }
 	}
 }
