@@ -416,7 +416,7 @@ fn parse_chello(bytes []u8) !ClientHello {
 		xslist:  xs
 	}
 	// validates the result
-	check_chello(ch)!
+	ch.check_chello()!
 
 	return ch
 }

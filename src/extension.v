@@ -471,3 +471,88 @@ fn ext_from_namegroups(ns []NamedGroup) !Extension {
 		data: ns_payload
 	}
 }
+
+// 4.2.10.  Early Data Indication
+//
+// struct {} Empty;
+//
+//    struct {
+//        select (Handshake.msg_type) {
+//            case new_session_ticket:   uint32 max_early_data_size;
+//            case client_hello:         Empty;
+//            case encrypted_extensions: Empty;
+//        };
+//    } EarlyDataIndication;
+//
+struct Empty {}
+
+@[noinit]
+struct EarlyDataIndication {
+mut:
+	msg_type   HandshakeType
+	max_eadata u32
+	// select (Handshake.msg_type) {
+	//  case new_session_ticket:  uint32 max_early_data_size
+	// case client_hello:         Empty
+	// case encrypted_extensions: Empty
+	//}
+}
+
+// size_edi returns the size of encoded EarlyDataIndication e
+@[inline]
+fn size_edi(e EarlyDataIndication) int {
+	match e.msg_type {
+		.new_session_ticket {
+			return 4
+		}
+		.client_hello, .encrypted_extensions {
+			return 0
+		}
+		else {
+			panic('invalid msg_type for EarlyDataIndication')
+		}
+	}
+}
+
+// pack_edi encodes EarlyDataIndication e into bytes array
+@[inline]
+fn pack_edi(e EarlyDataIndication) ![]u8 {
+	match e.msg_type {
+		.new_session_ticket {
+			mut max_easize := []u8{len: 4}
+			binary.big_endian_put_u32(mut max_easize, ed.max_eadata)
+			return max_easize
+		}
+		.client_hello, .encrypted_extensions {
+			// return empty bytes
+			return []u8{len: 0}
+		}
+		else {
+			return error('bad msg_type')
+		}
+	}
+}
+
+// parse_edi decodes bytes into EarlyDataIndication with specified msg_type
+@[direct_array_access; inline]
+fn parse_edi(bytes []u8, msg_type HandshakeType) !EarlyDataIndication {
+	mut e := EarlyDataIndication{}
+	match msg_type {
+		.new_session_ticket {
+			if bytes.len < 4 {
+				return error('bytes underflow')
+			}
+			mut r := new_buffer(bytes)!
+			val32 := r.read_u32()!
+			e.msg_type = .new_session_ticket
+			e.max_eadata = val32
+		}
+		.client_hello {
+			e.msg_type = .client_hello
+		}
+		.encrypted_extensions {
+			e.msg_type = .encrypted_extensions
+		}
+	}
+	return e
+}
