@@ -121,6 +121,7 @@ fn (r TlsRecord) to_ciphertext() TlsCiphertext {
 }
 
 // TlsPlaintext represents unencrypted, aka, plain TLS 1.3 record
+@[noinit]
 struct TlsPlaintext {
 mut:
 	ctype   ContentType = .invalid
@@ -294,11 +295,11 @@ fn (p TlsPlaintext) to_innerplaintext() !TLSInnerPlaintext {
 // to_innerplaintext_with_padmode transforms TlsPlaintext to TLSInnerPlaintext structure.
 // You can pass padding mode to one of `.nopad`, `.random`. or `.full` of enum value of `PaddingMode`
 // By default is to use `.nopad` policy in RecordLayer.
-fn (p TlsPlaintext) to_innerplaintext_with_padmode(padm PaddingMode) !TLSInnerPlaintext {
+fn (p TlsPlaintext) to_innerplaintext_with_padmode(pm PaddingMode) !TLSInnerPlaintext {
 	if p.fragment.len > 1 << 14 {
 		return error('fragment overflow')
 	}
-	pad := pad_for_fragment(p.fragment, padm)!
+	pad := pad_for_fragment(p.fragment, pm)!
 	if !is_zero(pad) {
 		return error('Bad padding, contains non null byte')
 	}
@@ -313,7 +314,9 @@ fn (p TlsPlaintext) to_innerplaintext_with_padmode(padm PaddingMode) !TLSInnerPl
 	return inner
 }
 
+@[noinit]
 struct TLSInnerPlaintext {
+mut:
 	// content is the TlsPlaintext.fragment value
 	content []u8
 	// inner ctype is a TlsPlaintext.ctype value where its
@@ -469,6 +472,7 @@ fn (c TlsCiphertext) to_tls_record() TlsRecord {
 // Utility function
 //
 // is_zero returns whether seed is all zeroes in constant time.
+@[direct_array_access; inline]
 fn is_zero(seed []u8) bool {
 	mut acc := u8(0)
 	for b in seed {
@@ -479,6 +483,7 @@ fn is_zero(seed []u8) bool {
 
 // find_content_type_position find first non null byte start from the last position.
 // Its return position in the bytes arrays.
+@[direct_array_access; inline]
 fn find_content_type_position(b []u8) !int {
 	// this check makes sure b is a valid bytes
 	if b.len < 1 {
@@ -518,8 +523,8 @@ enum PaddingMode {
 }
 
 // pad_for_fragment build zeros padding for fragment bytes
-fn pad_for_fragment(fragment []u8, padm PaddingMode) ![]u8 {
-	match padm {
+fn pad_for_fragment(fragment []u8, pm PaddingMode) ![]u8 {
+	match pm {
 		.nopad {
 			return nullbytes
 		}

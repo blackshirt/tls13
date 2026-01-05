@@ -7,6 +7,96 @@ module tls13
 
 // 4.2.8.  Key Share
 //
+// For ClientHello message,
+// struct {
+//    KeyShareEntry client_shares<0..2^16-1>;
+// } KeyShareClientHello;
+//
+// For HelloRetryRequest message,
+// struct {
+//          NamedGroup group;
+//      } KeyShareHelloRetryRequest;
+//
+// For ServerHello message,
+// struct {
+//        KeyShareEntry server_share;
+//    } KeyShareServerHello;
+//
+// KeyShareExtension
+//
+@[noinit]
+struct KeyShareExtension {
+mut:
+	// underlying msg_type of this key_share extension used
+	msg_type HandshakeType
+	// for ServerHello type but with hrr magic
+	is_hrr bool
+	// client_hello message
+	client_shares []KeyShareEntry
+	// hello_retry_request message
+	group NamedGroup = .x25519
+	// server_hello message
+	server_share KeyShareEntry
+}
+
+// pack_ksext encodes KeyShareExtension into bytes array
+@[inline]
+fn pack_ksext(k KeyShareExtension) ![]u8 {
+	match k.msg_type {
+		.client_hello {
+			return pack_ksentries_withlen(k.client_shares)!
+		}
+		.server_hello {
+			if k.is_hrr {
+				// treats as hello_retry_request message
+				return pack_u16item[NamedGroup](k.group)!
+			}
+			// otherwise, its normal server_hello message
+			return pack_ksentry(k.server_share)!
+		}
+		.hello_retry_request {
+			return pack_u16item[NamedGroup](k.group)!
+		}
+		else {
+			return error('invalid msg_type for key_share')
+		}
+	}
+}
+
+// parse_ksext decodes bytes into KeyShareExtension for specified msg_type and is_hrr flag
+@[direct_array_access; inline]
+fn parse_ksext(bytes []u8, msg_type HandshakeType, is_hrr bool) !KeyShareExtension {
+	mut kx := KeyShareExtension{}
+	match msg_type {
+		.client_hello {
+			kx.client_shares = parse_ksentries_withlen(bytes)!
+			kx.is_hrr = false
+			ks.msg_type = .client_hello
+		}
+		.server_hello {
+			if is_hrr {
+				g := parse_u16item[NamedGroup](bytes, new_group)!
+				kx.is_hrr = true
+				kx.group = g
+				kx.msg_type = msg_type
+			} else {
+				kx.is_hrr = false
+				kx.server_share = parse_ksentry(bytes)!
+				kx.msg_type = .server_hello
+			}
+		}
+		.hello_retry_request {
+			kx.group = parse_u16item[NamedGroup](bytes, new_group)!
+			kx.is_hrr = true
+			kx.msg_type = .hello_retry_request
+		}
+		else {
+			return error('invalid msg_type param')
+		}
+	}
+	return kx
+}
+
 // non-nul ksdata entry
 const min_ksentry_size = 5 // 5?
 
@@ -128,94 +218,4 @@ fn (mut kss []KeyShareEntry) append(ke KeyShareEntry) {
 	}
 	// otherwise append
 	kss << ke
-}
-
-// For ClientHello message,
-// struct {
-//    KeyShareEntry client_shares<0..2^16-1>;
-// } KeyShareClientHello;
-//
-// For HelloRetryRequest message,
-// struct {
-//          NamedGroup group;
-//      } KeyShareHelloRetryRequest;
-//
-// For ServerHello message,
-// struct {
-//        KeyShareEntry server_share;
-//    } KeyShareServerHello;
-//
-// KeyShareExtension
-//
-@[noinit]
-struct KeyShareExtension {
-mut:
-	// underlying msg_type of this key_share extension used
-	msg_type HandshakeType
-	// for ServerHello type but with hrr magic
-	is_hrr bool
-	// client_hello message
-	client_shares []KeyShareEntry
-	// hello_retry_request message
-	group NamedGroup = .x25519
-	// server_hello message
-	server_share KeyShareEntry
-}
-
-// pack_ksext encodes KeyShareExtension into bytes array
-@[inline]
-fn pack_ksext(k KeyShareExtension) ![]u8 {
-	match k.msg_type {
-		.client_hello {
-			return pack_ksentries_withlen(k.client_shares)!
-		}
-		.server_hello {
-			if k.is_hrr {
-				// treats as hello_retry_request message
-				return pack_u16item[NamedGroup](k.group)!
-			}
-			// otherwise, its normal server_hello message
-			return pack_ksentry(k.server_share)!
-		}
-		.hello_retry_request {
-			return pack_u16item[NamedGroup](k.group)!
-		}
-		else {
-			return error('invalid msg_type for key_share')
-		}
-	}
-}
-
-// parse_ksext decodes bytes into KeyShareExtension for specified msg_type and is_hrr flag
-@[direct_array_access; inline]
-fn parse_ksext(bytes []u8, msg_type HandshakeType, is_hrr bool) !KeyShareExtension {
-	mut kx := KeyShareExtension{}
-	match msg_type {
-		.client_hello {
-			kx.client_shares = parse_ksentries_withlen(bytes)!
-			kx.is_hrr = false
-			ks.msg_type = .client_hello
-		}
-		.server_hello {
-			if is_hrr {
-				g := parse_u16item[NamedGroup](bytes, new_group)!
-				kx.is_hrr = true
-				kx.group = g
-				kx.msg_type = msg_type
-			} else {
-				kx.is_hrr = false
-				kx.server_share = parse_ksentry(bytes)!
-				kx.msg_type = .server_hello
-			}
-		}
-		.hello_retry_request {
-			kx.group = parse_u16item[NamedGroup](bytes, new_group)!
-			kx.is_hrr = true
-			kx.msg_type = .hello_retry_request
-		}
-		else {
-			return error('invalid msg_type param')
-		}
-	}
-	return kx
 }

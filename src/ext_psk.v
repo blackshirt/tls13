@@ -1,6 +1,92 @@
+// Copyright © 2025 blackshirt.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
+// Pre-Shared Key Extension
 module tls13
 
 import encoding.binary
+
+// 4.2.11.  Pre-Shared Key Extension
+//
+// The "pre_shared_key" extension is used to negotiate the identity of
+// the pre-shared key to be used with a given handshake in association
+// with PSK key establishment.
+// The "extension_data" field of this extension contains a "PskExtension" value
+//
+const min_pskext_size = 2
+
+// PskExtension
+//
+@[noinit]
+struct PskExtension {
+mut:
+	msg_type HandshakeType
+	off_psks OfferedPsks
+	selected u16
+	// select (Handshake.msg_type) {
+	//  case client_hello: OfferedPsks;
+	//  case server_hello: uint16 selected_identity;
+	// }
+}
+
+// size_pskext returns the size of encoded PskExtension p. Its depends on msg_type of this PskExtension.
+@[inline]
+fn size_pskext(p PskExtension) int {
+	match p.msg_type {
+		.client_hello {
+			return size_offeredpsks(p.off_psks)
+		}
+		// the size of p.selected part
+		.server_hello, .hello_retry_request {
+			return 2
+		}
+		else {
+			panic('invalid msg_type ofr pre_shared_key extension')
+		}
+	}
+}
+
+// pack_pskext encodes PskExtension p into bytes array
+@[inline]
+fn pack_pskext(p PskExtension) ![]u8 {
+	match p.msg_type {
+		.client_hello {
+			return pack_offeredpsks(p.off_psks)!
+		}
+		.server_hello, .hello_retry_request {
+			return pack_u16item[u16](p.selected)
+		}
+		else {
+			return error('bad msg_type for PskExtension')
+		}
+	}
+}
+
+// parse_pskext decodes b into PskExtension for specified msg_type
+@[direct_array_access; inline]
+fn parse_pskext(b []u8, msg_type HandshakeType) !PskExtension {
+	match msg_type {
+		.client_hello {
+			return PskExtension{
+				msg_type: .client_hello
+				off_psks: parse_offeredpsks(b)!
+			}
+		}
+		.server_hello, .hello_retry_request {
+			if b.len < min_pskext_size {
+				return error('bytes underflow for pre_shared_key extension')
+			}
+			return PskExtension{
+				msg_type: msg_type
+				selected: binary.big_endian_u16(b)
+			}
+		}
+		else {
+			return error('bad msg_type for PskExtension')
+		}
+	}
+}
 
 // 4.2.9.  Pre-Shared Key Exchange Modes
 //
@@ -26,13 +112,15 @@ fn new_pskxmode(val u8) !PskKeyExchangeMode {
 //     } PskKeyExchangeModes;
 type PskKeyExchangeModeList = []PskKeyExchangeMode
 
+// size_psxmode_list returns the size of array of PskKeyExchangeMode
 @[inline]
-fn size_psxmode_list(ks PskKeyExchangeModeList) int {
+fn size_psxmode_list(ks []PskKeyExchangeMode) int {
 	return size_u8list_withlen[PskKeyExchangeMode](ks, .size1)
 }
 
+// pack_psxmode_list encodes array of PskKeyExchangeMode into bytes array
 @[direct_array_access; inline]
-fn pack_psxmode_list(ks PskKeyExchangeModeList) ![]u8 {
+fn pack_psxmode_list(ks []PskKeyExchangeMode) ![]u8 {
 	return pack_u8list_withlen[PskKeyExchangeMode](ks, .size1)!
 }
 
@@ -180,6 +268,7 @@ fn parse_bdentry(b []u8) !PskBinderEntry {
 	mut r := new_buffer(b)!
 	length := r.read_u8()!
 	bytes := r.read_at_least(int(length))!
+
 	return PskBinderEntry(bytes)
 }
 
@@ -201,6 +290,7 @@ fn pack_bdentry_list(ps []PskBinderEntry) ![]u8 {
 	return pack_objlist_withlen[PskBinderEntry](ps, pack_bdentry, size_bdentry, .size2)!
 }
 
+// parse_bdentry_list_direct oarses bytes into array of PskBinderEntry directly, without the length part.
 @[direct_array_access; inline]
 fn parse_bdentry_list_direct(bytes []u8) ![]PskBinderEntry {
 	mut i := 0
@@ -279,82 +369,5 @@ fn parse_offeredpsks(b []u8) !OfferedPsks {
 	return OfferedPsks{
 		identities: identities
 		binders:    binders
-	}
-}
-
-// 4.2.11.  Pre-Shared Key Extension
-//
-// The "pre_shared_key" extension is used to negotiate the identity of
-// the pre-shared key to be used with a given handshake in association
-// with PSK key establishment.
-// The "extension_data" field of this extension contains a "PskExtension" value
-//
-const min_pskext_size = 2
-
-@[noinit]
-struct PskExtension {
-mut:
-	msg_type HandshakeType = .client_hello
-	off_psks OfferedPsks
-	selected u16
-	// select (Handshake.msg_type) {
-	//  case client_hello: OfferedPsks;
-	//  case server_hello: uint16 selected_identity;
-	// }
-}
-
-@[inline]
-fn size_pskext(p PskExtension) int {
-	match p.msg_type {
-		.client_hello {
-			return size_offeredpsks(p.off_psks)
-		}
-		.server_hello, .hello_retry_request {
-			return 2
-		}
-		else {
-			panic('invalid msg_type ofr pre_shared_key extension')
-		}
-	}
-}
-
-@[inline]
-fn pack_pskext(p PskExtension) ![]u8 {
-	match p.msg_type {
-		.client_hello {
-			return pack_offeredpsks(p.off_psks)!
-			return out
-		}
-		.server_hello, .hello_retry_request {
-			return pack_u16item[u16](p.selected)
-		}
-		else {
-			return error('bad msg_type for PskExtension')
-		}
-	}
-}
-
-// parse_pskext decodes b into PskExtension for specified msg_type
-@[direct_array_access; inline]
-fn parse_pskext(b []u8, msg_type HandshakeType) !PskExtension {
-	match msg_type {
-		.client_hello {
-			return PskExtension{
-				msg_type: .client_hello
-				off_psks: parse_offeredpsks(b)!
-			}
-		}
-		.server_hello, .hello_retry_request {
-			if b.len < min_pskext_size {
-				return error('bytes underflow for pre_shared_key extension')
-			}
-			return PskExtension{
-				msg_type: msg_type
-				selected: binary.big_endian_u16(b)
-			}
-		}
-		else {
-			return error('bad msg_type for PskExtension')
-		}
 	}
 }
