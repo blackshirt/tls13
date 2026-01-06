@@ -30,6 +30,15 @@ mut:
 	// }
 }
 
+// ext_from_psk creates a new Extension from pre_shared_key extension p
+@[inline]
+fn ext_from_psk(p PskExtension) !Extension {
+	return Extension{
+		tipe: .pre_shared_key
+		data: pack_pskext(p)!
+	}
+}
+
 // size_pskext returns the size of encoded PskExtension p. Its depends on msg_type of this PskExtension.
 @[inline]
 fn size_pskext(p PskExtension) int {
@@ -210,9 +219,9 @@ fn pack_pskidentity_list(ps []PskIdentity) ![]u8 {
 	return pack_objlist_withlen[PskIdentity](ps, pack_pskidentity, size_pskidentity, .size2)!
 }
 
-// parse_pskidentities_direct decodes bytes into array of PskIdentity without the length
+// parse_pskidentities_nolen decodes bytes into array of PskIdentity without the length
 @[direct_array_access; inline]
-fn parse_pskidentities_direct(bytes []u8) ![]PskIdentity {
+fn parse_pskidentities_nolen(bytes []u8) ![]PskIdentity {
 	if bytes.len < min_pskidentitylist_size {
 		return error('bad PskIdentityList bytes')
 	}
@@ -234,7 +243,7 @@ fn parse_pskidentity_list(bytes []u8) ![]PskIdentity {
 	ps_len2 := r.read_u16()!
 	ps_bytes := r.read_at_least(int(ps_len2))!
 
-	return parse_pskidentities_direct(ps_bytes)!
+	return parse_pskidentities_nolen(ps_bytes)!
 }
 
 // PskBinderEntry
@@ -359,7 +368,7 @@ fn parse_offeredpsks(b []u8) !OfferedPsks {
 	// read identities
 	ident_len := r.peek_u16()!
 	ident_bytes := r.read_at_least(int(idn_len))!
-	identities := parse_pskidentities_direct(ident_bytes)!
+	identities := parse_pskidentities_nolen(ident_bytes)!
 
 	// read binders
 	binders_len := r.peek_u16()!

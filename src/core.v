@@ -53,11 +53,11 @@ fn new_version(val u16) !Version {
 //
 enum ContentType as u8 {
 	invalid            = 0
-	change_cipher_spec = 20
-	alert              = 21
-	handshake          = 22
-	application_data   = 23
-	heartbeat          = 24
+	change_cipher_spec = 20 // 0x14
+	alert              = 21 // 0x15
+	handshake          = 22 // 0x16
+	application_data   = 23 // 0x17
+	heartbeat          = 24 // 0x18
 }
 
 // new_ctntype creates a new ContentType from byte value.

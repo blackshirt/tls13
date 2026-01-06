@@ -16,7 +16,6 @@ mut:
 	ctype   ContentType
 	version Version = .v12
 	// Should this length to be relaxed, so its can handle fragmented record ?
-	length  int // u16
 	payload []u8
 }
 
@@ -167,151 +166,22 @@ fn (mut pl TlsPlaintext) set_version(ver Version) ! {
 	pl.version = ver
 }
 
-// from_handshake creates plain TlsPlaintext from Handshake msg
-fn TlsPlaintext.from_handshake(h Handshake) !TlsPlaintext {
-	payload := h.pack()!
-	if payload.len > max_u16 {
-		return error('Handshake payload need to fragment, its exceed')
-	}
-	mut rec := TlsPlaintext{
-		ctype:    .handshake
-		length:   payload.len
-		fragment: payload
-	}
-
-	return rec
-}
-
-// from_alert creates plaintext record with type Alert with default tls v1.2 version
-fn TlsPlaintext.from_alert(a Alert) !TlsPlaintext {
-	payload := a.pack()!
-	mut rec := TlsPlaintext{
-		ctype:    .alert
-		version:  .v12
-		length:   payload.len
-		fragment: payload
-	}
-	return rec
-}
-
-// serializes arrays of plaintext to bytes
-fn (pxt_list []TlsPlaintext) pack() ![]u8 {
-	mut out := []u8{}
-	for pxt in pxt_list {
-		obj := pxt.pack()!
-		out << obj
-	}
-	return out
-}
-
-// from_ccs creates plain TlsPlaintext from ChangeCipherSpec message
-fn TlsPlaintext.from_ccs(c ChangeCipherSpec) !TlsPlaintext {
-	payload := c.pack()!
-	mut rec := TlsPlaintext{
-		ctype:    .change_cipher_spec
-		version:  .v12
-		length:   payload.len
-		fragment: payload
-	}
-
-	return rec
-}
-
-pub fn (p TlsPlaintext) str() string {
-	return 'TlsPlaintext:type=${p.ctype}:length=${p.length}:fragment=${p.fragment.bytestr()}'
-}
-
-fn (p TlsPlaintext) to_tls_record() TlsRecord {
-	return TlsRecord{
-		ctype:   p.ctype
-		version: p.version
-		length:  p.length
-		payload: p.fragment
-	}
-}
-
-fn (p TlsPlaintext) pack() ![]u8 {
-	if p.length != p.fragment.len {
-		return error('Unmatched fragment length')
-	}
-	if p.fragment.len > (1 << 14) {
-		return error('Fragment length exceed limit')
-	}
-	mut out := []u8{}
-	ctn := p.ctype.pack()!
-	ver := p.version.pack()!
-	mut bol := []u8{len: 2}
-	binary.big_endian_put_u16(mut bol, u16(p.length))
-
-	out << ctn
-	out << ver
-	out << bol
-	out << p.fragment
-
-	return out
-}
-
-fn TlsPlaintext.unpack(b []u8) !TlsPlaintext {
-	if b.len < 5 {
-		return error('TlsPlaintext bytes: underflow')
-	}
-	mut r := Buffer.new(b)!
-	ctn := r.read_u8()!
-	ctype := ContentType.from_u8(ctn)!
-	ver := r.read_u16()!
-	version := Version.from_u16(ver)!
-	length := r.read_u16()!
-	if length > (1 << 14) {
-		return error('Malformed TlsPlaintext fragment: overflow')
-	}
-	fragment := r.read_at_least(int(length))!
-
-	pl := TlsPlaintext{
-		ctype:    ctype
-		version:  version
-		length:   int(length)
-		fragment: fragment
-	}
-
-	return pl
-}
-
-fn (pxt_list []TlsPlaintext) packed_length() int {
-	mut n := 0
-	for p in pxt_list {
-		n += p.packed_length()
-	}
-	return n
-}
-
-// to_inner_plaintext transform TlsPlaintext to TLSInnerPlaintext structure.
-// Its default was using no padding policy to the result, if you want more control to the
-// padding mode, see `to_innerplaintext_with_padmode`
-fn (p TlsPlaintext) to_innerplaintext() !TLSInnerPlaintext {
-	pxt := p.to_innerplaintext_with_padmode(.nopad)!
-	return pxt
-}
-
-// to_innerplaintext_with_padmode transforms TlsPlaintext to TLSInnerPlaintext structure.
+// into_inner_with_padmode transforms TlsPlaintext to TLSInnerPlaintext structure.
 // You can pass padding mode to one of `.nopad`, `.random`. or `.full` of enum value of `PaddingMode`
 // By default is to use `.nopad` policy in RecordLayer.
-fn (p TlsPlaintext) to_innerplaintext_with_padmode(pm PaddingMode) !TLSInnerPlaintext {
-	if p.fragment.len > 1 << 14 {
-		return error('fragment overflow')
-	}
+fn (p TlsPlaintext) into_inner_with_padmode(pm PaddingMode) !TLSInnerPlaintext {
 	pad := pad_for_fragment(p.fragment, pm)!
 	if !is_zero(pad) {
 		return error('Bad padding, contains non null byte')
 	}
-	if p.fragment.len + pad.len > 1 << 14 {
+	if p.fragment.len + pad.len > max_fragment_size {
 		return error('Fragment and pad length: overflow')
 	}
-	inner := TLSInnerPlaintext{
+	return TLSInnerPlaintext{
 		content: p.fragment
 		ctype:   p.ctype
 		zeros:   pad
 	}
-	return inner
 }
 
 // TLSInnerPlaintext
@@ -329,16 +199,15 @@ struct TLSInnerPlaintext {
 mut:
 	// content is the TlsPlaintext.fragment value, its a u16-sized length
 	content []u8
-	// inner ctype is a TlsPlaintext.ctype value where its
-	// containing the actual content type of the record.
+	// inner ctype is a TlsPlaintext.ctype value where its containing the actual content type of the record.
 	ctype ContentType
-	// zeros is an arbitrary-length run of zero-valued bytes.
+	// zeros is an arbitrary-length run of zero-valued bytes acts as padding
 	// Its should valid bytes arrays contains zeros bytes that does not exceed record limit,
 	zeros []u8
 }
 
 fn (inner TLSInnerPlaintext) to_plaintext() !TlsPlaintext {
-	if inner.content.len >= 1 << 14 {
+	if inner.content.len >= max_fragment_size {
 		return error('inner.content length exceed limit')
 	}
 	plain := TlsPlaintext{
@@ -379,7 +248,7 @@ fn (ip TLSInnerPlaintext) packed_length() int {
 
 fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 	// read padding first
-	pos := find_content_type_position(b)!
+	pos := find_ctntype_offset(b)!
 	mut padding := []u8{}
 	// if pos is the last position, set padding to remaining bytes
 	if pos < b.len - 1 {
@@ -392,7 +261,7 @@ fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 
 	inner := TLSInnerPlaintext{
 		content: content
-		ctype:   ContentType.from_u8(ctype)!
+		ctype:   new_ctntype(ctype)!
 		zeros:   padding
 	}
 	return inner
@@ -418,11 +287,13 @@ mut:
 	payload []u8
 }
 
+// size_ciphertext returns the size of encoded TlsCiphertext c, in bytes
 @[inline]
 fn size_ciphertext(c TlsCiphertext) int {
 	return 5 + c.payload.len
 }
 
+// pack_ciphertext encodes TlsCiphertext c into bytes array
 @[inline]
 fn pack_ciphertext(c TlsCiphertext) ![]u8 {
 	// The length MUST NOT exceed 2^14 + 256 bytes
@@ -452,10 +323,11 @@ fn parse_ciphertext(bytes []u8) !TlsCiphertext {
 	if otype != .application_data {
 		return error('Bad TlsCiphertext ContentType')
 	}
-	// read version
+	// read version, we dont check the parsed version
 	ver := r.read_u16()!
 	version := new_version(ver)!
 
+	// read the length of payload
 	length := r.read_u16()!
 	if length > max_cpayload_size {
 		return error('Bad TlsCiphertext length: overflow')
@@ -480,16 +352,16 @@ fn is_zero(seed []u8) bool {
 	return acc == 0
 }
 
-// find_content_type_position find first non null byte start from the last position.
+// find_ctntype_offset find first non null byte start from the last position.
 // Its return position in the bytes arrays.
 @[direct_array_access; inline]
-fn find_content_type_position(b []u8) !int {
+fn find_ctntype_offset(b []u8) !int {
 	// this check makes sure b is a valid bytes
 	if b.len < 1 {
 		return error('bad b.len')
 	}
 	// arrays length should not exceed record's limit
-	if b.len > 1 << 14 {
+	if b.len > max_fragment_size {
 		return error('Provided bytes exceed record limit')
 	}
 	// make sure, its non all zero bytes

@@ -39,12 +39,21 @@ mut:
 	server_share KeyShareEntry
 }
 
+// ext_from_ksext creates an Extension from KeyShareExtension k.
+@[inline]
+fn ext_from_ksext(k KeyShareExtension) !Extension {
+	return Extension{
+		tipe: .key_share
+		data: pack_ksext(k)!
+	}
+}
+
 // pack_ksext encodes KeyShareExtension into bytes array
 @[inline]
 fn pack_ksext(k KeyShareExtension) ![]u8 {
 	match k.msg_type {
 		.client_hello {
-			return pack_ksentries_withlen(k.client_shares)!
+			return pack_ksentries(k.client_shares)!
 		}
 		.server_hello {
 			if k.is_hrr {
@@ -69,7 +78,7 @@ fn parse_ksext(bytes []u8, msg_type HandshakeType, is_hrr bool) !KeyShareExtensi
 	mut kx := KeyShareExtension{}
 	match msg_type {
 		.client_hello {
-			kx.client_shares = parse_ksentries_withlen(bytes)!
+			kx.client_shares = parse_ksentries(bytes)!
 			kx.is_hrr = false
 			ks.msg_type = .client_hello
 		}
@@ -145,16 +154,16 @@ fn pack_ksentry(k KeyShareEntry) ![]u8 {
 	return out
 }
 
-// pack_ksentries encodes array of KeyShareEntry into bytes array, without the length
+// pack_ksentries encodes array of KeyShareEntry into bytes array with 2-bytes length
 @[direct_array_access; inline]
 fn pack_ksentries(ks []KeyShareEntry) ![]u8 {
-	return pack_objlist[KeyShareEntry](ks, pack_ksentry, size_ksentry)!
+	return pack_objlist_withlen[KeyShareEntry](ks, pack_ksentry, size_ksentry, .size2)!
 }
 
-// pack_ksentries_withlen encodes array of KeyShareEntry into bytes array with 2-bytes length
+// pack_ksentries_nolen encodes array of KeyShareEntry into bytes array, without the length
 @[direct_array_access; inline]
-fn pack_ksentries_withlen(ks []KeyShareEntry) ![]u8 {
-	return pack_objlist_withlen[KeyShareEntry](ks, pack_ksentry, size_ksentry, .size2)!
+fn pack_ksentries_nolen(ks []KeyShareEntry) ![]u8 {
+	return pack_objlist[KeyShareEntry](ks, pack_ksentry, size_ksentry)!
 }
 
 // parse_ksentry decodes bytes b into KeyShareEntry
@@ -179,43 +188,44 @@ fn parse_ksentry(b []u8) !KeyShareEntry {
 	}
 }
 
-// parse_ksentries decodes bytes into array of KeyShareEntry, without the length 	
-@[direct_array_access; inline]
-fn parse_ksentries(bytes []u8) ![]KeyShareEntry {
-	mut i := 0
-	mut ks := []KeyShareEntry{cap: bytes / min_ksentry_size}
-	for i < bytes.len {
-		item := parse_ksentry(bytes[i..])!
-		ks.append(item)
-		i += size_ksentry
-	}
-	return ks
-}
-
-// parse_ksentries_withlen decodes bytes into array of KeyShareEntry with 2-bytes length
+// parse_ksentries decodes bytes into array of KeyShareEntry with 2-bytes length
 @[direct_array_access]
-fn parse_ksentries_withlen(bytes []u8) ![]KeyShareEntry {
+fn parse_ksentries(bytes []u8) ![]KeyShareEntry {
 	mut r := new_buffer(bytes)!
 
 	// length, was u16-sized
 	bol2 := r.read_u16()
 
 	ks_bytes := r.read_at_least(int(bol2))!
-	return parse_ksentries(ks_bytes)!
+	return parse_ksentries_nolen(ks_bytes)!
+}
+
+// parse_ksentries_nolen decodes bytes into array of KeyShareEntry, without the length 	
+@[direct_array_access; inline]
+fn parse_ksentries_nolen(bytes []u8) ![]KeyShareEntry {
+	mut i := 0
+	mut ks := []KeyShareEntry{cap: bytes / min_ksentry_size}
+	for i < bytes.len {
+		item := parse_ksentry(bytes[i..])!
+		ks.append(item)
+		i += size_ksentry(item)
+	}
+	return ks
 }
 
 // append adds KeyShareEntry item ke into array of KeyShareEntry
-fn (mut kss []KeyShareEntry) append(ke KeyShareEntry) {
-	if ke in kss {
+@[direct_array_access; inline]
+fn (mut ks []KeyShareEntry) append(ke KeyShareEntry) {
+	if ke in ks {
 		return
 	}
 	// If one already exists with this type, replace it
-	for mut item in kss {
+	for mut item in ks {
 		if item.group == ke.group {
 			item.ksdata = ke.ksdata
 			continue
 		}
 	}
 	// otherwise append
-	kss << ke
+	ks << ke
 }
