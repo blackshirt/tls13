@@ -307,24 +307,34 @@ fn (p TlsPlaintext) to_innerplaintext_with_padmode(pm PaddingMode) !TLSInnerPlai
 		return error('Fragment and pad length: overflow')
 	}
 	inner := TLSInnerPlaintext{
-		content:       p.fragment
-		ctype:         p.ctype
-		zeros_padding: pad
+		content: p.fragment
+		ctype:   p.ctype
+		zeros:   pad
 	}
 	return inner
 }
 
+// TLSInnerPlaintext
+//
+// struct {
+//        opaque content[TLSPlaintext.length];
+//        ContentType type;
+//        uint8 zeros[length_of_padding];
+//    } TLSInnerPlaintext;
+//
+const min_innertext_size = 3
+
 @[noinit]
 struct TLSInnerPlaintext {
 mut:
-	// content is the TlsPlaintext.fragment value
+	// content is the TlsPlaintext.fragment value, its a u16-sized length
 	content []u8
 	// inner ctype is a TlsPlaintext.ctype value where its
 	// containing the actual content type of the record.
 	ctype ContentType
-	// zeros_padding is an arbitrary-length run of zero-valued bytes.
-	// Its shoul valid bytes arrays contains zeros bytes that does not exceed record limit,
-	zeros_padding []u8
+	// zeros is an arbitrary-length run of zero-valued bytes.
+	// Its should valid bytes arrays contains zeros bytes that does not exceed record limit,
+	zeros []u8
 }
 
 fn (inner TLSInnerPlaintext) to_plaintext() !TlsPlaintext {
@@ -334,7 +344,6 @@ fn (inner TLSInnerPlaintext) to_plaintext() !TlsPlaintext {
 	plain := TlsPlaintext{
 		ctype:    inner.ctype
 		version:  .v12
-		length:   inner.content.len
 		fragment: inner.content
 	}
 	return plain
@@ -342,18 +351,18 @@ fn (inner TLSInnerPlaintext) to_plaintext() !TlsPlaintext {
 
 fn (ip TLSInnerPlaintext) pack() ![]u8 {
 	// check if padding is all zeros bytes
-	if !is_zero(ip.zeros_padding) {
+	if !is_zero(ip.zeros) {
 		return error('Bad padding, contains non null byte')
 	}
 	// check for sure, its not overflow record payload limit
-	if ip.content.len + 1 + ip.zeros_padding.len > 1 << 14 {
+	if ip.content.len + 1 + ip.zeros.len > 1 << 14 {
 		return error('Bad content and pad length; overflow')
 	}
 	mut out := []u8{}
 	// TODD: is it should add content.len?
 	out << ip.content
 	out << ip.ctype.pack()!
-	out << ip.zeros_padding
+	out << ip.zeros
 
 	return out
 }
@@ -363,7 +372,7 @@ fn (ip TLSInnerPlaintext) packed_length() int {
 
 	n += ip.content.len
 	n += 1
-	n += ip.zeros_padding.len
+	n += ip.zeros.len
 
 	return n
 }
@@ -382,9 +391,9 @@ fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 	content := b[0..pos]
 
 	inner := TLSInnerPlaintext{
-		content:       content
-		ctype:         ContentType.from_u8(ctype)!
-		zeros_padding: padding
+		content: content
+		ctype:   ContentType.from_u8(ctype)!
+		zeros:   padding
 	}
 	return inner
 }
@@ -392,6 +401,12 @@ fn TLSInnerPlaintext.unpack(b []u8) !TLSInnerPlaintext {
 // The outer otype field of a TlsCiphertext record is always set to the value 23 (application_data)
 // for outward compatibility with middleboxes accustomed to parsing previous versions of TLS.
 // The actual content type of the record is found in TLSInnerPlaintext.type after decryption
+//
+const min_ciphertext_size = 5
+const max_cpayload_size = 1 << 14 + 256
+
+// TlsCiphertext
+//
 @[noinit]
 struct TlsCiphertext {
 mut:
@@ -403,75 +418,59 @@ mut:
 	payload []u8
 }
 
-fn (tc TlsCiphertext) packed_length() int {
-	mut n := 0
-	n += 1
-	n += 2
-	n += 2
-	n += tc.payload.len
-
-	return n
+@[inline]
+fn size_ciphertext(c TlsCiphertext) int {
+	return 5 + c.payload.len
 }
 
-fn (tc TlsCiphertext) pack() ![]u8 {
+@[inline]
+fn pack_ciphertext(c TlsCiphertext) ![]u8 {
 	// The length MUST NOT exceed 2^14 + 256 bytes
-	if tc.length != tc.payload.len || tc.payload.len > 1 << 14 + 256 {
-		return error('Bad TlsCiphertext length: overflow or unmatched')
+	if tc.payload.len > max_cpayload_size {
+		return error('Bad TlsCiphertext overflow payload')
 	}
-	mut out := []u8{}
-	out << tc.otype.pack()!
-	out << tc.version.pack()!
-
-	mut length := []u8{len: 2}
-	binary.big_endian_put_u16(mut length, u16(tc.length))
-	out << length
-	out << tc.payload
+	mut out := []u8{cap: size_ciphertext(c)}
+	out << pack_u8item[ContentType](c.ctype)
+	out << pack_u16item[Version](c.version)!
+	out << pack_raw_withlen(c.payload, .size2)!
 
 	return out
 }
 
-fn TlsCiphertext.unpack(b []u8) !TlsCiphertext {
-	if b.len < 5 {
+// parse_ciphertext decodes bytes into TlsCiphertext
+@[direct_array_access; inline]
+fn parse_ciphertext(bytes []u8) !TlsCiphertext {
+	if bytes.len < min_ciphertext_size {
 		return error('Bad TlsCiphertext bytes: underflow')
 	}
-	mut r := Buffer.new(b)!
+	mut r := new_buffer(b)!
+	// Get opaque type
 	opq := r.read_u8()!
-	otype := ContentType.from_u8(opq)!
+	otype := new_ctntype(opq)!
+	// The outer opaque_type field of a TLSCiphertext record is always set to the value 23 (application_data)
+	// for outward compatibility with middleboxes accustomed to parsing previous versions of TLS.
 	if otype != .application_data {
 		return error('Bad TlsCiphertext ContentType')
 	}
+	// read version
 	ver := r.read_u16()!
-	version := Version.from_u16(ver)!
-	if version != .v12 {
-		return error('Bad TlsCiphertext Version ')
-	}
+	version := new_version(ver)!
+
 	length := r.read_u16()!
-	if length > 1 << 14 + 256 {
+	if length > max_cpayload_size {
 		return error('Bad TlsCiphertext length: overflow')
 	}
-	payload := r.read_at_least(int(length))!
 
-	tc := TlsCiphertext{
+	return TlsCiphertext{
 		otype:   otype
 		version: version
-		length:  int(length)
-		payload: payload
-	}
-	return tc
-}
-
-fn (c TlsCiphertext) to_tls_record() TlsRecord {
-	return TlsRecord{
-		ctype:   c.otype
-		version: c.version
-		length:  int(c.length)
-		payload: c.payload
+		payload: r.read_at_least(int(length))!
 	}
 }
 
 // Utility function
 //
-// is_zero returns whether seed is all zeroes in constant time.
+// is_zero tells whether seed is all zeroes in constant time.
 @[direct_array_access; inline]
 fn is_zero(seed []u8) bool {
 	mut acc := u8(0)
@@ -495,7 +494,7 @@ fn find_content_type_position(b []u8) !int {
 	}
 	// make sure, its non all zero bytes
 	if is_zero(b) {
-		return error('${@FN}: bad all zeros bytes')
+		return error('bad all zeros bytes')
 	}
 
 	// set i to the last index of the bytes data
@@ -512,7 +511,7 @@ fn find_content_type_position(b []u8) !int {
 	}
 	// If a receiving implementation does not find a non-zero octet in the cleartext,
 	// it MUST terminate the connection with an "unexpected_message" alert.
-	return error('${@FN} not found non-null byte')
+	return error('not found non-null byte')
 }
 
 // padding policy for handling of the record's padding
@@ -522,25 +521,27 @@ enum PaddingMode {
 	full   = 0x02 // full padding
 }
 
+const null_bytes = []u8{}
+const max_fragment_size = 1 << 14
+
 // pad_for_fragment build zeros padding for fragment bytes
+@[direct_array_access; inline]
 fn pad_for_fragment(fragment []u8, pm PaddingMode) ![]u8 {
 	match pm {
 		.nopad {
-			return nullbytes
+			return null_bytes
 		}
 		.random {
-			pad_limit := 1 << 14 - fragment.len
-			n := rand.u32n(u32(pad_limit))!
-			pad := []u8{len: int(n), init: u8(0x00)}
-			return pad
+			pad_limit := max_fragment_size - fragment.len
+			n := rand.int_in_range(0, pad_limit)!
+			return []u8{len: n, init: 0x00}
 		}
 		.full {
-			if fragment.len >= 1 << 14 {
-				return nullbytes
+			if fragment.len >= max_fragment_size {
+				return null_bytes
 			}
-			rem := 1 << 14 - fragment.len
-			pad := []u8{len: rem, init: u8(0x00)}
-			return pad
+			rem := max_fragment_size - fragment.len
+			return []u8{len: rem, init: 0x00}
 		}
 	}
 }
