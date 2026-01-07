@@ -1,18 +1,84 @@
+// Copyright © 2025 blackshirt.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
 module tls13
 
 import rand
 import encoding.binary
+import x.crypto.chacha20poly1305 as cpol
+
+@[direct_array_access; inline]
+fn make_wrnonce(c &cpol.AEAD, wiv []u8, cw_seq u64) []u8 {
+	mut wnonce := []u8{len: c.nonce_size()}
+	// The 64-bit record sequence number is encoded in network byte
+	// order and padded to the left with zeros to iv_length.
+	binary.big_endian_put_u64_end(mut wnonce, cw_seq)
+	// The padded sequence number is XORed with either the static
+	// client_write_iv or server_write_iv (depending on the role).
+	for i := 0; i < wnonce.len; i++ {
+		wnonce[i] = wnonce[i] ^ wiv[i]
+	}
+	return wnonce
+}
+
+@[direct_array_access; inline]
+fn make_rdnonce(c &cpol.AEAD, riv []u8, cr_seq u64) []u8 {
+	mut rdnonce := []u8{len: c.nonce_size()}
+	binary.big_endian_put_u64_end(mut rdnonce, cr_seq)
+	// The padded sequence number is XORed with either the static
+	// client_write_iv or server_write_iv (depending on the role).
+	for i := 0; i < rdnonce.len; i++ {
+		rdnonce[i] = rdnonce[i] ^ riv[i]
+	}
+
+	return rdnonce
+}
+
+// add_data builds additional data, where additional_data
+//		= TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length
+@[inline]
+fn add_data(ctype ContentType, ver Version, length int) ![]u8 {
+	if length > max_u16 {
+		return error('length exceed max_u16')
+	}
+	mut ad := []u8{cap: min_ciphertext_size}
+	ad << pack_u8item[ContentType](ctype)
+	ad << pack_u16item[Version](ver)
+	ad << pack_u16item[int](length)
+
+	return ad
+}
+
+// treats TlsRecord r as a plaintext record and
+@[direct_array_access]
+fn encrypt_rec(r TlsRecord, c &cpol.AEAD, wkey []u8, wiv []u8, pm PaddingMode) !TlsCiphertext {
+	// transforms plaintext record r into TlsInnerText structure
+	inner := r.into_inner_with_padmode(pm)!
+	// The plaintext input to the AEAD algorithm is the encoded TLSInnerPlaintext structure.
+	plaintext := inner.pack()!
+
+	// calculates encrypted length, The length MUST NOT exceed 2^14 + 256 bytes
+	length := plaintext.len + c.tag_size()
+	if length > max_payload_size {
+		return error('record_overflow alert.')
+	}
+
+	// build additional_data, ie, TlsCiphertext header
+	ad_data := add_data(.application_data, .v12, length)!
+}
 
 // TLS 1.3 Record
 //
 const min_record_size = 5
 
 // TlsRecord is a general purposes structure represents TLS 1.3 Record
+//
 @[noinit]
 struct TlsRecord {
 mut:
-	// for plaintext record, its a higher-level protocol used to process
-	// the enclosed fragment or application_data if this was ciphertext record.
+	// for plaintext record, its a higher-level protocol used to process the enclosed fragment
+	// or .application_data if this was ciphertext record.
 	ctype ContentType
 	// The legacy_record_version field is always 0x0303
 	version Version = .v12
@@ -42,10 +108,14 @@ fn pack_record(r TlsRecord) ![]u8 {
 	return out
 }
 
+// expect_type checks whether this record has a ContentType tp
+@[inline]
 fn (r TlsRecord) expect_type(tp ContentType) bool {
 	return r.ctype == tp
 }
 
+// set_version sets the record version
+@[inline]
 fn (mut r TlsRecord) set_version(ver Version) ! {
 	if ver !in [tls_v11, .v12, tls_v13] {
 		return error('version not supported')
@@ -60,10 +130,8 @@ fn (mut r TlsRecord) set_version(ver Version) ! {
 // You can pass padding mode to one of `.nopad`, `.random`. or `.full` of enum value of `PaddingMode`
 // By default is to use `.nopad` policy in RecordLayer.
 fn (r TlsRecord) into_inner_with_padmode(pm PaddingMode) !TlsInnerText {
+	// build the zeros padding with padding mode in pm
 	pad := pad_for_fragment(p.fragment, pm)!
-	if !is_zero(pad) {
-		return error('Bad padding, contains non null byte')
-	}
 	// when this record treated as plaintext record, The fragment length MUST NOT exceed 2^14 bytes.
 	// event its padded with the zeros padding
 	if p.fragment.len + pad.len > max_fragment_size {
@@ -90,7 +158,7 @@ const min_innertext_size = 3
 @[noinit]
 struct TlsInnerText {
 mut:
-	// content is the TlsRecord.fragment value, its a u16-sized length
+	// content is the TlsRecord.fragment value, should be lower than 1 << 14 length
 	content []u8
 	// inner ctype is a TlsRecord.ctype value where its containing the actual content type of the record.
 	ctype ContentType
@@ -113,11 +181,12 @@ fn (p TlsInnerText) pack() ![]u8 {
 	if !is_zero(p.zeros) {
 		return error('Bad padding, contains non null byte')
 	}
-	// check for sure, its not overflow record payload limit
-	if p.content.len + 1 + p.zeros.len > max_fragment_size {
+	// check for sure, its not overflowing plaintext record payload limit
+	size := size_innertext(p)
+	if size > max_fragment_size {
 		return error('Bad content and pad length; overflow')
 	}
-	mut out := []u8{cap: size_innertext(p)}
+	mut out := []u8{cap: size}
 	// TODD: is it should add a content.len?
 	out << p.content
 	out << pack_u8item[ContentType](p.ctype)
@@ -129,8 +198,11 @@ fn (p TlsInnerText) pack() ![]u8 {
 // parse_innertext parses bytes b into TlsInnerText structure
 @[direct_array_access; inline]
 fn parse_innertext(b []u8) !TlsInnerText {
-	// read padding first
-	pos := find_ctntype_offset(b)!
+	// get non-null bytes position from the bytes b and error if its not found
+	pos := find_ctntype_offset(b)
+	if pos < 0 {
+		err_from_offset(pos)!
+	}
 	mut padding := []u8{}
 	// if pos is the last position, set padding to remaining bytes
 	if pos < b.len - 1 {
@@ -235,21 +307,39 @@ fn is_zero(seed []u8) bool {
 	return acc == 0
 }
 
+// error constants return values for find_ctntype_offset
+//
+const err_invalid_length = -1
+const err_exceed_limit = -2
+const err_zeros_bytes = -3
+const err_nonnull_notfound = -4
+
+@[inline]
+fn err_from_offset(n int) ! {
+	match n {
+		-1 { return error('err_invalid_length') }
+		-2 { return error('err_exceed_limit') }
+		-3 { return error('err_zeros_bytes') }
+		-4 { return error('err_nonnull_notfound') }
+		else { return error('invalid result error number') }
+	}
+}
+
 // find_ctntype_offset find first non null byte start from the last position.
 // Its return position in the bytes arrays.
 @[direct_array_access; inline]
-fn find_ctntype_offset(b []u8) !int {
+fn find_ctntype_offset(b []u8) int {
 	// this check makes sure b is a valid bytes
 	if b.len < 1 {
-		return error('bad b.len')
+		return err_invalid_length
 	}
 	// arrays length should not exceed record's limit
 	if b.len > max_fragment_size {
-		return error('Provided bytes exceed record limit')
+		return err_exceed_limit
 	}
 	// make sure, its non all zero bytes
 	if is_zero(b) {
-		return error('bad all zeros bytes')
+		return err_zeros_bytes
 	}
 
 	// set i to the last index of the bytes data
@@ -266,14 +356,14 @@ fn find_ctntype_offset(b []u8) !int {
 	}
 	// If a receiving implementation does not find a non-zero octet in the cleartext,
 	// it MUST terminate the connection with an "unexpected_message" alert.
-	return error('not found non-null byte')
+	return err_nonnull_notfound
 }
 
 // padding policy for handling of the record's padding
 enum PaddingMode {
-	nopad  = 0x00 // no padding
-	random = 0x01 // random padding
-	full   = 0x02 // full padding
+	nopad  // no padding
+	random // random padding
+	full   // full padding
 }
 
 const null_bytes = []u8{}

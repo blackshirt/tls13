@@ -84,7 +84,7 @@ fn (mut rc RecordLayer) encrypt(pxt TLSPlaintext, write_key []u8, write_iv []u8)
 		return error('record_overflow alert.')
 	}
 	// build additional_data, ie, TLSCiphertext header
-	add := rc.make_additional_data(ContentType.application_data, tls_v12, length)!
+	add := rc.make_additional_data(ContentType.application_data, .v12, length)!
 
 	// do cipher encryption, enc_record field of TLSCiphertext is set to result of encryption.
 	// enc_record is concatenation of ciphertext plus tag result
@@ -101,7 +101,7 @@ fn (mut rc RecordLayer) encrypt(pxt TLSPlaintext, write_key []u8, write_iv []u8)
 	// finally, build TLSCiphertext structure and return it
 	cxt := TLSCiphertext{
 		opaque_type: ContentType.application_data
-		lgc_version: tls_v12
+		lgc_version: .v12
 		length:      length
 		enc_record:  enc_record
 	}
@@ -145,7 +145,7 @@ fn (mut rc RecordLayer) decrypt(cxt TLSCiphertext, peer_wrkey []u8, iv []u8) !TL
 // TLS protocol places no restrictions on how the TLS hanshake messages should
 // reside within the TLS records, and the TLS handshake messages may be broken into several fragments
 fn (rc RecordLayer) uncoalesced_record(pxt TLSPlaintext) ![]Handshake {
-	assert pxt.ctn_type == .handshake
+	assert pxt.ctype == .handshake
 	payload := pxt.fragment
 	// payload may be contains multiple handahake messages
 	// todo: better handling of this
@@ -196,8 +196,8 @@ fn (rc RecordLayer) coalesce_hsk(hs []Handshake) !TLSPlaintext {
 	}
 	hsp := hs.pack()!
 	pl := TLSPlaintext{
-		ctn_type:    .handshake
-		lgc_version: tls_v12
+		ctype:       .handshake
+		lgc_version: .v12
 		length:      hsp.len
 		fragment:    hsp
 	}
@@ -205,7 +205,7 @@ fn (rc RecordLayer) coalesce_hsk(hs []Handshake) !TLSPlaintext {
 }
 
 fn (rc RecordLayer) hsk_msgs_not_interleaved(rcs []TLSPlaintext) bool {
-	return rcs.all(it.ctn_type == .handshake)
+	return rcs.all(it.ctype == .handshake)
 }
 
 // The per-record nonce for the AEAD construction is formed as follows:
@@ -235,10 +235,10 @@ fn (rc RecordLayer) build_read_nonce(iv []u8) []u8 {
 
 // make_additional_data builds additional data needed for record encryption/decrption
 // additional_data = TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length
-fn (rc RecordLayer) make_additional_data(ctn_type ContentType, ver ProtocolVersion, length int) ![]u8 {
+fn (rc RecordLayer) make_additional_data(ctype ContentType, ver Version, length int) ![]u8 {
 	mut out := []u8{}
 
-	out << ctn_type.pack()!
+	out << ctype.pack()!
 	out << ver.pack()!
 	mut length_bytes := []u8{len: 2}
 	assert length < max_u16
@@ -253,7 +253,7 @@ fn (rc RecordLayer) make_additional_data(ctn_type ContentType, ver ProtocolVersi
 // see for proposed mbedtls handshake fragmentation handling at
 // https://github.com/oesh/mbedtls/blob/hs_fragmentation__design_doc/docs/proposed/hs_reassembly.md
 // do_fragment does fragmentation of payload if its length bigger than 2^14 bytes, by chunk-ing it
-fn (rc RecordLayer) do_fragment(payload []u8, ctn_type ContentType) ![]TLSPlaintext {
+fn (rc RecordLayer) do_fragment(payload []u8, ctype ContentType) ![]TLSPlaintext {
 	mut pxt_list := []TLSPlaintext{}
 	if payload.len > 1 << 14 {
 		// we're currently not supports for fragmentation, so return error instead
@@ -261,7 +261,7 @@ fn (rc RecordLayer) do_fragment(payload []u8, ctn_type ContentType) ![]TLSPlaint
 		// chunks := arrays.chunk(payload, 1 << 14)
 		// for chunk in chunks {
 		// pxt := TLSPlaintext{
-		//	ctn_type: ctn_type
+		//	ctype: ctype
 		//	length: chunk.len
 		//	fragment: chunk
 		//}
@@ -272,7 +272,7 @@ fn (rc RecordLayer) do_fragment(payload []u8, ctn_type ContentType) ![]TLSPlaint
 	}
 	// below 1<<14, directly build plaintext
 	pxt := TLSPlaintext{
-		ctn_type: ctn_type
+		ctype:    ctype
 		length:   payload.len
 		fragment: payload
 	}
@@ -288,10 +288,10 @@ fn (rc RecordLayer) do_defragment(pls []TLSPlaintext) ![][]u8 {
 	if pls.len <= 0 {
 		return out
 	}
-	pt := pls[0].ctn_type
+	pt := pls[0].ctype
 	pv := pls[0].lgc_version
 	// check
-	s := pls.all(it.ctn_type == pt && it.lgc_version == pv)
+	s := pls.all(it.ctype == pt && it.lgc_version == pv)
 	if s {
 		for p in pls {
 			o := p.fragment
