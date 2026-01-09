@@ -6,14 +6,101 @@ module tls13
 
 import rand
 import encoding.binary
-import x.crypto.chacha20poly1305 as cpol
+import x.crypto.chacha20poly1305
 
+// AEAD encrypter
+interface AeadEncrypter {
+	encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8
+	decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8
+}
+
+// Default chacha20poly1305 AEAD encrypter
+@[noini]
+struct DefaultAead {
+mut:
+	c CipherSuite = .tls_chacha20poly1305_sha256
+}
+
+// new_default creates a new default chacha20poly1305 AEAD encrypter
+@[inline]
+fn new_default() &AeadEncrypter {
+	return &DefaultAead{}
+}
+
+fn (d DefaultAead) encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
+	return chacha20poly1305.encrypt(plaintext, key, nonce, ad)!
+}
+
+fn (d DefaultAead) decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
+	return chacha20poly1305.decrypt(ciphertext, key, nonce, ad)!
+}
+
+// record protection layer
+//
+@[noinit]
+struct RContext {
+mut:
+	// default cipher suite used in aead part, set on creation
+	c CipherSuite = .tls_chacha20poly1305_sha256
+	// flag that marked this instance of context was alreade reset
+	done bool
+	// record payload aead encrypter
+	aead &AeadEncrypter = new_default()
+	// padding policy used, default for no padding
+	pm PaddingMode = .nopad
+	// current write sequence
+	cw_seq u64
+	// current read sequence
+	cr_seq u64
+}
+
+// new_rcontext creates record protection context from ciphersuite c and padding policy pm.
+// Its only support for tls_chacha20poly1305_sha256 ciphersuite for now.
+@[inline]
+fn new_rcontext(c CipherSuite, pm PaddingMode) !RContext {
+	match c {
+		.tls_chacha20poly1305_sha256 {
+			return RContext{
+				c: .tls_chacha20poly1305_sha256
+				pm: pm
+			}
+		}
+		else {
+			return error('unsupported ciphersuite for record context')
+		}
+	}
+}
+
+@[inline]
+fn (mut r RContext) inc_wseq() {
+	r.cw_seq += 1
+	if r.cw_seq == 0 {
+		panic('u64bit wirte sequence has overflow')
+	}
+}
+
+@[inline]
+fn (mut r RContext) inc_rseq() {
+	r.cr_seq += 1
+	if r.cr_seq == 0 {
+		panic('u64bit read sequence has overflow')
+	}
+}
+
+// set_padmode sets padding mode of this record context r
+@[inline]
+fn (mut r RContext) set_padmode(pm PaddingMode) {
+	r.pm = pm
+}
+
+// make_wrnonce makes a write nonce
 @[direct_array_access; inline]
-fn make_wrnonce(c &cpol.AEAD, wiv []u8, cw_seq u64) []u8 {
-	mut wnonce := []u8{len: c.nonce_size()}
+fn (mut r RContext) make_wrnonce(wiv []u8) []u8 {
+	// recommended nonce size 
+	mut wnonce := []u8{len: nonce_size(r.c)}
 	// The 64-bit record sequence number is encoded in network byte
 	// order and padded to the left with zeros to iv_length.
-	binary.big_endian_put_u64_end(mut wnonce, cw_seq)
+	binary.big_endian_put_u64_end(mut wnonce, r.cw_seq)
 	// The padded sequence number is XORed with either the static
 	// client_write_iv or server_write_iv (depending on the role).
 	for i := 0; i < wnonce.len; i++ {
@@ -22,10 +109,11 @@ fn make_wrnonce(c &cpol.AEAD, wiv []u8, cw_seq u64) []u8 {
 	return wnonce
 }
 
+// make_rdnonce make a read nonce
 @[direct_array_access; inline]
-fn make_rdnonce(c &cpol.AEAD, riv []u8, cr_seq u64) []u8 {
-	mut rdnonce := []u8{len: c.nonce_size()}
-	binary.big_endian_put_u64_end(mut rdnonce, cr_seq)
+fn (mut r RContext) make_rdnonce(riv []u8) []u8 {
+	mut rdnonce := []u8{len: nonce_size(r.c)}
+	binary.big_endian_put_u64_end(mut rdnonce, r.cr_seq)
 	// The padded sequence number is XORed with either the static
 	// client_write_iv or server_write_iv (depending on the role).
 	for i := 0; i < rdnonce.len; i++ {
@@ -35,10 +123,50 @@ fn make_rdnonce(c &cpol.AEAD, riv []u8, cr_seq u64) []u8 {
 	return rdnonce
 }
 
-// add_data builds additional data, where additional_data
+// treats TlsRecord r as a plaintext record and encrypt them
+@[direct_array_access]
+fn (mut r RContext) encrypt_rec(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
+	// transforms plaintext record r into TlsInnerText structure
+	inner := rec.into_inner_with_padmode(r.pm)!
+	// The plaintext input to the AEAD algorithm is the encoded TLSInnerPlaintext structure.
+	plaintext := inner.pack()!
+
+	// calculates encrypted length, The length MUST NOT exceed 2^14 + 256 bytes
+	length := plaintext.len + tag_size(r.c)
+	if length > max_payload_size {
+		return error('record_overflow alert.')
+	}
+
+	// build additional_data, ie, TlsCiphertext header
+	ad_data := make_adata(.application_data, .v12, length)!
+	//
+	wr_nonce := r.make_wrnonce(wiv)
+
+	// aead encrypt
+	ciphertext, tag := r.aead.encrypt(plaintext, wkey, wr_nonce, ad_data)!
+
+	// build encrypted payload 
+	mut encrypted_text := []u8{len: ciphertext.len + tag.len}
+	encrypted_text << ciphertext
+	encrypted_text << tag
+
+	// increases write seq number
+	r.inc_wseq()
+
+	return TlsCiphertext{
+		otype:   ContentType.application_data
+		version: .v12
+		payload: encrypted_text
+	}
+}
+
+// Record protection mechansim helpers
+//
+
+// make_adata builds additional data, where additional_data
 //		= TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length
 @[inline]
-fn add_data(ctype ContentType, ver Version, length int) ![]u8 {
+fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
 	if length > max_u16 {
 		return error('length exceed max_u16')
 	}
@@ -48,24 +176,6 @@ fn add_data(ctype ContentType, ver Version, length int) ![]u8 {
 	ad << pack_u16item[int](length)
 
 	return ad
-}
-
-// treats TlsRecord r as a plaintext record and
-@[direct_array_access]
-fn encrypt_rec(r TlsRecord, c &cpol.AEAD, wkey []u8, wiv []u8, pm PaddingMode) !TlsCiphertext {
-	// transforms plaintext record r into TlsInnerText structure
-	inner := r.into_inner_with_padmode(pm)!
-	// The plaintext input to the AEAD algorithm is the encoded TLSInnerPlaintext structure.
-	plaintext := inner.pack()!
-
-	// calculates encrypted length, The length MUST NOT exceed 2^14 + 256 bytes
-	length := plaintext.len + c.tag_size()
-	if length > max_payload_size {
-		return error('record_overflow alert.')
-	}
-
-	// build additional_data, ie, TlsCiphertext header
-	ad_data := add_data(.application_data, .v12, length)!
 }
 
 // TLS 1.3 Record

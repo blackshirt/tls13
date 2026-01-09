@@ -584,8 +584,7 @@ fn (c CipherSuite) str() string {
 			return 'TLS_AES256GCM_SHA384'
 		}
 		.tls_chacha20poly1305_sha256 {
-			return ''
-			TLS_CHACHA20POLY1305_SHA256
+			return 'TLS_CHACHA20POLY1305_SHA256'
 		}
 		.tls_aes128ccm_sha256 {
 			return 'TLS_AES128CCM_SHA256'
@@ -595,6 +594,36 @@ fn (c CipherSuite) str() string {
 		}
 		.tls_emptyrenegotiationinfo_scsv {
 			return 'TLS_EMPTYRENEGOTIATIONINFO_SCSV'
+		}
+	}
+}
+
+// Helpers for CipherSuite items
+//
+
+@[inline]
+fn tag_size(c CipherSuite) int {
+	match c {
+		.tls_aes128gcm_sha256, .tls_aes256gcm_sha384, .tls_chacha20poly1305_sha256 {
+			return 16
+		}
+		else {
+			eprintln('unsupported ciphersuite')
+			exit(1)
+		}
+	}
+}
+
+//
+@[inline]
+fn nonce_size(c CipherSuite) int {
+	match c {
+		.tls_aes128gcm_sha256, .tls_aes256gcm_sha384, .tls_chacha20poly1305_sha256 {
+			return 12
+		}
+		else {
+			eprintln('unsupported ciphersuite')
+			exit(1)
 		}
 	}
 }
