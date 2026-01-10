@@ -61,7 +61,7 @@ fn new_rcontext(c CipherSuite, pm PaddingMode) !RContext {
 	match c {
 		.tls_chacha20poly1305_sha256 {
 			return RContext{
-				c: .tls_chacha20poly1305_sha256
+				c:  .tls_chacha20poly1305_sha256
 				pm: pm
 			}
 		}
@@ -89,50 +89,27 @@ fn (mut r RContext) inc_rseq() {
 	}
 }
 
-// set_padmode sets padding mode of this record context r for sub-sequence 
+// set_padmode sets padding mode of this record context r for sub-sequence
 // of record protection operation.
 @[inline]
 fn (mut r RContext) set_padmode(pm PaddingMode) {
 	r.pm = pm
 }
 
-// make_wrnonce makes a write nonce
-@[direct_array_access; inline]
-fn (mut r RContext) make_wrnonce(wiv []u8) []u8 {
-	// recommended nonce size 
-	mut wnonce := []u8{len: nonce_size(r.c)}
-	// The 64-bit record sequence number is encoded in network byte
-	// order and padded to the left with zeros to iv_length.
-	binary.big_endian_put_u64_end(mut wnonce, r.cw_seq)
-	// The padded sequence number is XORed with either the static
-	// client_write_iv or server_write_iv (depending on the role).
-	for i := 0; i < wnonce.len; i++ {
-		wnonce[i] = wnonce[i] ^ wiv[i]
-	}
-	return wnonce
+// do seal and return TlsCiphertext where opaque type set to .application_data and
+// version to TLS 1.2
+@[direct_array_access]
+fn (mut r RContext) do_seal(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
+	return r.do_seal_x(rec, wkey, wiv, .application_data, .v12)!
 }
 
-// make_rdnonce make a read nonce
-@[direct_array_access; inline]
-fn (mut r RContext) make_rdnonce(riv []u8) []u8 {
-	mut rdnonce := []u8{len: nonce_size(r.c)}
-	binary.big_endian_put_u64_end(mut rdnonce, r.cr_seq)
-	// The padded sequence number is XORed with either the static
-	// client_write_iv or server_write_iv (depending on the role).
-	for i := 0; i < rdnonce.len; i++ {
-		rdnonce[i] = rdnonce[i] ^ riv[i]
-	}
-
-	return rdnonce
-}
-
-// do_protect treats a TlsRecord rec as a plaintext record and does protection mechansim 
+// do_seal_x treats a TlsRecord rec as a plaintext record and does protection mechansim
 // by encrypting them and does necessary step to do that. Its retirn TlsCiphertext opaque
 // as an encrypted form of original record.
-@[direct_array_access]
-fn (mut r RContext) do_protect(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
+@[direct_array_access; inline]
+fn (mut r RContext) do_seal_x(rec TlsRecord, wkey []u8, wiv []u8, tp ContentType, ver Version) !TlsCiphertext {
 	// transforms plaintext record r into TlsInnerText structure
-	inner := rec.into_inner_with_padmode(r.pm)!
+	inner := rec.into_inner(r.pm)!
 	// The plaintext input to the AEAD algorithm is the encoded TLSInnerPlaintext structure.
 	plaintext := inner.pack()!
 
@@ -143,14 +120,14 @@ fn (mut r RContext) do_protect(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertex
 	}
 
 	// build additional_data, ie, TlsCiphertext header
-	ad_data := make_adata(.application_data, .v12, length)!
-	//
-	wr_nonce := r.make_wrnonce(wiv)
+	ad_data := make_adata(tp, ver, length)!
+	// build write nonce
+	wr_nonce := r.make_wnonce(wiv)
 
-	// aead encrypt
+	// perform aead encrypt
 	ciphertext, tag := r.aead.encrypt(plaintext, wkey, wr_nonce, ad_data)!
 
-	// build encrypted payload 
+	// build encrypted payload
 	mut encrypted_text := []u8{len: ciphertext.len + tag.len}
 	encrypted_text << ciphertext
 	encrypted_text << tag
@@ -165,29 +142,54 @@ fn (mut r RContext) do_protect(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertex
 	}
 }
 
-// unprotect_c does reverse of protection operation on the TlsCiphertext c
+// open_c does reverse of protection operation on the TlsCiphertext c
 // and return unencrypted form of TlsRecord.
 @[inline]
-fn (mut r RContext) unprotect_c(c TlsCiphertext) !TlsRecord {}
+fn (mut r RContext) open_c(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
+	// build additional data, read nonce and other stuffs needed for decryption process
+	ad_data := make_adata(c.otype, c.version, c.payload.len)!
+	//
+	rnonce := make_rnonce(riv, r.cr_seq, nonce_size(r.c))!
 
-// unprotect_r treats TlsRecord rec as encrypted form of TlsCiphertext and does 
+	// As a note, TLSCiphertext.payload field is containing ciphertext output of `.encrypt()`
+	// operation plus appended with mac parts, so we split it to feed to decryption step.
+	idx := c.payload.len - tag_size(r.c)
+	ciphertext := c.payload[0..idx]
+	mac := c.payload[idx..]
+	assert mac.len == tag_size(r.c)
+
+	output := r.aead.decrypt(ciphertext, rkey, rnonce, ad_data)!
+	inner := parse_innertext(output)!
+	
+	rec := TlsRecord{
+		ctype: inner.ctype 
+		version: .v12 
+		fragment: inner.content
+	}
+	// increases read sequence number
+	r.inc_rseq()
+
+	return pxt
+}
+
+// open_r treats TlsRecord rec as encrypted form of TlsCiphertext and does
 // unprotection (decryption) step and return decryped TlsRecord.
 @[inline]
-fn (mut r RContext) unprotect_r(rec TlsRecord) !TlsRecord {
+fn (mut r RContext) open_r(rec TlsRecord) !TlsRecord {
 	// treats record rec as encrypted form of TlsCiphertext
 	c := TlsCiphertext{
-		otype: rec.ctype
+		otype:   rec.ctype
 		version: rec.version
 		payload: rec.fragment
 	}
-	return r.unprotect_c(c)!
+	return r.open_c(c)!
 }
 
 // TLS 1.3 record protection mechansim helpers
 //
 
 // make_adata builds an additional data, where additional_data
-//		= TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length
+//		= TLSCiphertext.otype || TLSCiphertext.legacy_record_version || TLSCiphertext.length
 @[inline]
 fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
 	if length > max_u16 {
@@ -199,6 +201,37 @@ fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
 	ad << pack_u16item[int](length)
 
 	return ad
+}
+
+// make_wnonce builds write nonce for the write initialization vector wiv for the
+// current write sequence cw_seq and length of the underlying nonce size in ivlength
+@[direct_array_access; inline]
+fn make_wnonce(wiv []u8, cw_seq u64, ivlength int) ![]u8 {
+	// recommended nonce size
+	mut wnonce := []u8{len: ivlength}
+	// The 64-bit record sequence number is encoded in network byte
+	// order and padded to the left with zeros to ivlength.
+	binary.big_endian_put_u64_end(mut wnonce, cw_seq)
+	// The padded sequence number is XORed with either the static
+	// client_write_iv or server_write_iv (depending on the role).
+	for i := 0; i < wnonce.len; i++ {
+		wnonce[i] = wnonce[i] ^ wiv[i]
+	}
+	return wnonce
+}
+
+// make_rnonce make a read nonce
+@[direct_array_access; inline]
+fn make_rnonce(riv []u8, cr_seq u64, ivlength int) []u8 {
+	mut rnonce := []u8{len: ivlength}
+	binary.big_endian_put_u64_end(mut rnonce, r.cr_seq)
+	// The padded sequence number is XORed with either the static
+	// client_read_iv or server_read_iv (depending on the role).
+	for i := 0; i < rnonce.len; i++ {
+		rnonce[i] = rnonce[i] ^ riv[i]
+	}
+
+	return rnonce
 }
 
 // TLS 1.3 Record
@@ -259,10 +292,10 @@ fn (mut r TlsRecord) set_version(ver Version) ! {
 	r.version = ver
 }
 
-// into_inner_with_padmode treats TlsRecord as plaintext record and transforms into TlsInnerText structure.
+// into_inner treats TlsRecord as plaintext record and transforms into TlsInnerText structure.
 // You can pass padding mode to one of `.nopad`, `.random`. or `.full` of enum value of `PaddingMode`
 // By default is to use `.nopad` policy in RecordLayer.
-fn (r TlsRecord) into_inner_with_padmode(pm PaddingMode) !TlsInnerText {
+fn (r TlsRecord) into_inner(pm PaddingMode) !TlsInnerText {
 	// build the zeros padding with padding mode in pm
 	pad := pad_for_fragment(p.fragment, pm)!
 	// when this record treated as plaintext record, The fragment length MUST NOT exceed 2^14 bytes.
@@ -406,7 +439,7 @@ fn parse_ciphertext(bytes []u8) !TlsCiphertext {
 	// Get opaque type
 	opq := r.read_u8()!
 	otype := new_ctntype(opq)!
-	// The outer opaque_type field of a TLSCiphertext record is always set to the value 23 (application_data)
+	// The outer otype field of a TLSCiphertext record is always set to the value 23 (application_data)
 	// for outward compatibility with middleboxes accustomed to parsing previous versions of TLS.
 	if otype != .application_data {
 		return error('Bad TlsCiphertext ContentType')
