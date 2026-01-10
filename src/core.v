@@ -601,6 +601,8 @@ fn (c CipherSuite) str() string {
 // Helpers for CipherSuite items
 //
 
+// tag_size retirns standard size of underlying aead tag output
+// defined by this ciphersuite, in bytes.
 @[inline]
 fn tag_size(c CipherSuite) int {
 	match c {
@@ -614,7 +616,8 @@ fn tag_size(c CipherSuite) int {
 	}
 }
 
-//
+// nonce_size returns standar of nonce (initialization vector) size in bytes, 
+// for underlying aead defined by this ciphersuite.
 @[inline]
 fn nonce_size(c CipherSuite) int {
 	match c {
@@ -625,6 +628,18 @@ fn nonce_size(c CipherSuite) int {
 			eprintln('unsupported ciphersuite')
 			exit(1)
 		}
+	}
+}
+
+// digest_size returns the size of hash (digest) of underlying hash algorithm
+// defined by this ciphersuite.
+@[inline]
+fn digest_size(c CipherSuite) int {
+	match c {
+		.tls_chacha20poly1305_sha256 { return 32 }
+		.tls_aes128ccm8_sha256 { return 32 }
+		.tls_aes128gcm_sha256 { return 32 }
+		.tls_aes256gcm_sha384 { rerturn 48 
 	}
 }
 

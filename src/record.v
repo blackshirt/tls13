@@ -35,7 +35,7 @@ fn (d DefaultAead) decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8
 	return chacha20poly1305.decrypt(ciphertext, key, nonce, ad)!
 }
 
-// record protection layer
+// RContext is a record protection layer
 //
 @[noinit]
 struct RContext {
@@ -71,6 +71,7 @@ fn new_rcontext(c CipherSuite, pm PaddingMode) !RContext {
 	}
 }
 
+// inc_wseq increases context write sequence number by one, or panic if it wraps 64-bit number
 @[inline]
 fn (mut r RContext) inc_wseq() {
 	r.cw_seq += 1
@@ -79,6 +80,7 @@ fn (mut r RContext) inc_wseq() {
 	}
 }
 
+// inc_rseq increases context read sequence number by one, or panics if it wraps 64-bit counter.
 @[inline]
 fn (mut r RContext) inc_rseq() {
 	r.cr_seq += 1
@@ -87,7 +89,8 @@ fn (mut r RContext) inc_rseq() {
 	}
 }
 
-// set_padmode sets padding mode of this record context r
+// set_padmode sets padding mode of this record context r for sub-sequence 
+// of record protection operation.
 @[inline]
 fn (mut r RContext) set_padmode(pm PaddingMode) {
 	r.pm = pm
@@ -123,9 +126,11 @@ fn (mut r RContext) make_rdnonce(riv []u8) []u8 {
 	return rdnonce
 }
 
-// treats TlsRecord r as a plaintext record and encrypt them
+// do_protect treats a TlsRecord rec as a plaintext record and does protection mechansim 
+// by encrypting them and does necessary step to do that. Its retirn TlsCiphertext opaque
+// as an encrypted form of original record.
 @[direct_array_access]
-fn (mut r RContext) encrypt_rec(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
+fn (mut r RContext) do_protect(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
 	// transforms plaintext record r into TlsInnerText structure
 	inner := rec.into_inner_with_padmode(r.pm)!
 	// The plaintext input to the AEAD algorithm is the encoded TLSInnerPlaintext structure.
@@ -160,10 +165,28 @@ fn (mut r RContext) encrypt_rec(rec TlsRecord, wkey []u8, wiv []u8) !TlsCipherte
 	}
 }
 
-// Record protection mechansim helpers
+// unprotect_c does reverse of protection operation on the TlsCiphertext c
+// and return unencrypted form of TlsRecord.
+@[inline]
+fn (mut r RContext) unprotect_c(c TlsCiphertext) !TlsRecord {}
+
+// unprotect_r treats TlsRecord rec as encrypted form of TlsCiphertext and does 
+// unprotection (decryption) step and return decryped TlsRecord.
+@[inline]
+fn (mut r RContext) unprotect_r(rec TlsRecord) !TlsRecord {
+	// treats record rec as encrypted form of TlsCiphertext
+	c := TlsCiphertext{
+		otype: rec.ctype
+		version: rec.version
+		payload: rec.fragment
+	}
+	return r.unprotect_c(c)!
+}
+
+// TLS 1.3 record protection mechansim helpers
 //
 
-// make_adata builds additional data, where additional_data
+// make_adata builds an additional data, where additional_data
 //		= TLSCiphertext.opaque_type || TLSCiphertext.legacy_record_version || TLSCiphertext.length
 @[inline]
 fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
@@ -424,6 +447,7 @@ const err_exceed_limit = -2
 const err_zeros_bytes = -3
 const err_nonnull_notfound = -4
 
+// err_from_offset returns error from error code n
 @[inline]
 fn err_from_offset(n int) ! {
 	match n {
@@ -436,7 +460,7 @@ fn err_from_offset(n int) ! {
 }
 
 // find_ctntype_offset find first non null byte start from the last position.
-// Its return position in the bytes arrays.
+// Its return positive position in the bytes arrays or negative number for an error.
 @[direct_array_access; inline]
 fn find_ctntype_offset(b []u8) int {
 	// this check makes sure b is a valid bytes
