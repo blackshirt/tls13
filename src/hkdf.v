@@ -2,8 +2,8 @@ module tls13
 
 import encoding.binary
 
-const max_hkdf_label_length = 255
-const max_hkdf_context_length = 255
+const max_hkdflabel_size = 255
+const max_hkdfcontext_size = 255
 const tls13_label_prefix = 'tls13 '
 
 // This add support for HKDF-Expand-Label and other machinery for TLS 1.3
@@ -63,10 +63,10 @@ fn (hl HkdfLabel) verify() ! {
 		return error('HkdfLabel.tls13_label contains non-ascii string')
 	}
 
-	if hl.tls13_label.len > max_hkdf_label_length {
+	if hl.tls13_label.len > max_hkdflabel_size {
 		return error('tls13_label.len exceed limit')
 	}
-	if hl.context.len > max_hkdf_context_length {
+	if hl.context.len > max_hkdfcontext_size {
 		return error('hkdflabel context.len exceed limit')
 	}
 

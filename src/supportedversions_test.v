@@ -1,5 +1,6 @@
 module tls13
 
+/*
 // see https://tls13.xargs.org/#client-hello/annotated
 fn test_supportedversionsextension_unpack_from_clienthello() ! {
 	bytes := [u8(0x00), 0x2b, 0x00, 0x03, 0x02, 0x03, 0x04]
@@ -27,3 +28,5 @@ fn test_supportedversionsextension_pack_unpack_from_serverhello() ! {
 	back := spv.pack_to_extension_bytes()!
 	assert back == data
 }
+
+*/

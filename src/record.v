@@ -42,16 +42,16 @@ struct RContext {
 mut:
 	// default cipher suite used in aead part, set on creation
 	c CipherSuite = .tls_chacha20poly1305_sha256
-	// flag that marked this instance of context was alreade reset
-	done bool
 	// record payload aead encrypter
 	aead &AeadEncrypter = new_default()
 	// padding policy used, default for no padding
 	pm PaddingMode = .nopad
 	// current write sequence
-	cw_seq u64
+	cwseq u64
 	// current read sequence
-	cr_seq u64
+	crseq u64
+	// flag that marked this instance of context was alreade reset
+	done bool
 }
 
 // new_rcontext creates record protection context from ciphersuite c and padding policy pm.
@@ -71,43 +71,27 @@ fn new_rcontext(c CipherSuite, pm PaddingMode) !RContext {
 	}
 }
 
-// inc_wseq increases context write sequence number by one, or panic if it wraps 64-bit number
-@[inline]
-fn (mut r RContext) inc_wseq() {
-	r.cw_seq += 1
-	if r.cw_seq == 0 {
-		panic('u64bit wirte sequence has overflow')
-	}
-}
-
-// inc_rseq increases context read sequence number by one, or panics if it wraps 64-bit counter.
-@[inline]
-fn (mut r RContext) inc_rseq() {
-	r.cr_seq += 1
-	if r.cr_seq == 0 {
-		panic('u64bit read sequence has overflow')
-	}
-}
-
-// set_padmode sets padding mode of this record context r for sub-sequence
+// set_pmode sets padding mode of this record context r for sub-sequence
 // of record protection operation.
 @[inline]
-fn (mut r RContext) set_padmode(pm PaddingMode) {
+fn (mut r RContext) set_pmode(pm PaddingMode) {
+	if r.pm == pm {
+		return
+	}
 	r.pm = pm
 }
 
-// do seal and return TlsCiphertext where opaque type set to .application_data and
-// version to TLS 1.2
+// encrypt does encryption on TlsRecord rec and return TlsCiphertext where opaque type set
+// to .application_data and version to TLS 1.2
 @[direct_array_access]
-fn (mut r RContext) do_seal(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
-	return r.do_seal_x(rec, wkey, wiv, .application_data, .v12)!
+fn (mut r RContext) encrypt(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
+	return r.encrypt_internal(rec, wkey, wiv, .application_data, .v12)!
 }
 
-// do_seal_x treats a TlsRecord rec as a plaintext record and does protection mechansim
-// by encrypting them and does necessary step to do that. Its retirn TlsCiphertext opaque
-// as an encrypted form of original record.
+// encrypt_internal treats a TlsRecord rec as a plaintext record and does protection mechanism by encrypting them
+// and does necessary step to do that. Its return TlsCiphertext opaque as an encrypted form of original record.
 @[direct_array_access; inline]
-fn (mut r RContext) do_seal_x(rec TlsRecord, wkey []u8, wiv []u8, tp ContentType, ver Version) !TlsCiphertext {
+fn (mut r RContext) encrypt_internal(rec TlsRecord, wkey []u8, wiv []u8, tp ContentType, ver Version) !TlsCiphertext {
 	// transforms plaintext record r into TlsInnerText structure
 	inner := rec.into_inner(r.pm)!
 	// The plaintext input to the AEAD algorithm is the encoded TLSInnerPlaintext structure.
@@ -136,23 +120,22 @@ fn (mut r RContext) do_seal_x(rec TlsRecord, wkey []u8, wiv []u8, tp ContentType
 	r.inc_wseq()
 
 	return TlsCiphertext{
-		otype:   ContentType.application_data
+		otype:   .application_data
 		version: .v12
 		payload: encrypted_text
 	}
 }
 
-// open_c does reverse of protection operation on the TlsCiphertext c
-// and return unencrypted form of TlsRecord.
+// decrypt does reverse of protection operation on the TlsCiphertext c and return unencrypted form of TlsRecord.
 @[inline]
-fn (mut r RContext) open_c(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
+fn (mut r RContext) decrypt(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
 	// build additional data, read nonce and other stuffs needed for decryption process
 	ad_data := make_adata(c.otype, c.version, c.payload.len)!
-	//
-	rnonce := make_rnonce(riv, r.cr_seq, nonce_size(r.c))!
+	// make a read nonce from the current read sequence number and peer_read_iv riv
+	rnonce := make_rnonce(riv, r.crseq, nonce_size(r.c))!
 
 	// As a note, TLSCiphertext.payload field is containing ciphertext output of `.encrypt()`
-	// operation plus appended with mac parts, so we split it to feed to decryption step.
+	// operation plus appended with mac parts, so we split it to feed into decryption step.
 	idx := c.payload.len - tag_size(r.c)
 	ciphertext := c.payload[0..idx]
 	mac := c.payload[idx..]
@@ -160,29 +143,48 @@ fn (mut r RContext) open_c(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
 
 	output := r.aead.decrypt(ciphertext, rkey, rnonce, ad_data)!
 	inner := parse_innertext(output)!
-	
+
 	rec := TlsRecord{
-		ctype: inner.ctype 
-		version: .v12 
+		ctype: inner.ctype
+		// should
+		version:  .v12
 		fragment: inner.content
 	}
 	// increases read sequence number
 	r.inc_rseq()
 
-	return pxt
+	return rec
 }
 
-// open_r treats TlsRecord rec as encrypted form of TlsCiphertext and does
-// unprotection (decryption) step and return decryped TlsRecord.
+// decrypt_rec treats TlsRecord rec as encrypted form of TlsCiphertext and does
+// unprotection (decryption) step and return the decryped TlsRecord.
 @[inline]
-fn (mut r RContext) open_r(rec TlsRecord) !TlsRecord {
+fn (mut r RContext) decrypt_rec(rec TlsRecord) !TlsRecord {
 	// treats record rec as encrypted form of TlsCiphertext
 	c := TlsCiphertext{
 		otype:   rec.ctype
 		version: rec.version
 		payload: rec.fragment
 	}
-	return r.open_c(c)!
+	return r.decrypt(c)!
+}
+
+// inc_wseq increases context write sequence number by one, or panic if it wraps 64-bit number
+@[inline]
+fn (mut r RContext) inc_wseq() {
+	r.cwseq += 1
+	if r.cwseq == 0 {
+		panic('u64bit wirte sequence has overflow')
+	}
+}
+
+// inc_rseq increases context read sequence number by one, or panics if it wraps 64-bit counter.
+@[inline]
+fn (mut r RContext) inc_rseq() {
+	r.crseq += 1
+	if r.crseq == 0 {
+		panic('u64bit read sequence has overflow')
+	}
 }
 
 // TLS 1.3 record protection mechansim helpers
@@ -204,14 +206,14 @@ fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
 }
 
 // make_wnonce builds write nonce for the write initialization vector wiv for the
-// current write sequence cw_seq and length of the underlying nonce size in ivlength
+// current write sequence cwseq and length of the underlying nonce size in ivlength
 @[direct_array_access; inline]
-fn make_wnonce(wiv []u8, cw_seq u64, ivlength int) ![]u8 {
+fn make_wnonce(wiv []u8, cwseq u64, ivlength int) ![]u8 {
 	// recommended nonce size
 	mut wnonce := []u8{len: ivlength}
 	// The 64-bit record sequence number is encoded in network byte
 	// order and padded to the left with zeros to ivlength.
-	binary.big_endian_put_u64_end(mut wnonce, cw_seq)
+	binary.big_endian_put_u64_end(mut wnonce, cwseq)
 	// The padded sequence number is XORed with either the static
 	// client_write_iv or server_write_iv (depending on the role).
 	for i := 0; i < wnonce.len; i++ {
@@ -222,9 +224,9 @@ fn make_wnonce(wiv []u8, cw_seq u64, ivlength int) ![]u8 {
 
 // make_rnonce make a read nonce
 @[direct_array_access; inline]
-fn make_rnonce(riv []u8, cr_seq u64, ivlength int) []u8 {
+fn make_rnonce(riv []u8, crseq u64, ivlength int) []u8 {
 	mut rnonce := []u8{len: ivlength}
-	binary.big_endian_put_u64_end(mut rnonce, r.cr_seq)
+	binary.big_endian_put_u64_end(mut rnonce, r.crseq)
 	// The padded sequence number is XORed with either the static
 	// client_read_iv or server_read_iv (depending on the role).
 	for i := 0; i < rnonce.len; i++ {
