@@ -63,7 +63,7 @@ fn (h Handshake) is_hrr() !bool {
 		return true
 	}
 	if h.tipe == .server_hello {
-		sh := ServerHello.unpack(h.payload)!
+		sh := parse_shello(h.payload)!
 		if sh.is_hrr() {
 			return true
 		}
@@ -98,7 +98,7 @@ fn parse_hsk(b []u8) !Handshake {
 	length := u24_from_bytes(bol3)!
 
 	// read Handshake payload
-	payload := r.read_at_least(int(length))!
+	payload := r.read_at_least(int(length.value))!
 
 	hsk := Handshake{
 		tipe:    tipe
@@ -116,36 +116,6 @@ fn (hs []Handshake) filtered_hsk_with_type(msgtype HandshakeType) []Handshake {
 
 // HandshakeList is arrays of handshake messages
 type HandshakeList = []Handshake
-
-// There are some situations, multiple handshake payload packed contained in single record.
-// unpack_to_multi_handshake add supports to this situation, its unpack bytes array as
-// array of Handshake
-fn unpack_to_multi_handshake(b []u8) ![]Handshake {
-	if b.len < min_hskmsg_size {
-		return error('unpack_to_multi_handshakes: Underflow of Handshakes bytes')
-	}
-	mut hs := []Handshake{}
-	mut i := 0
-	mut r := new_buffer(b)!
-	for i < b.len {
-		mut buf := []u8{}
-		tp := r.read_u8()!
-		bytes_length := r.read_bytes(3)!
-
-		val := Uint24.from_bytes(bytes_length)!
-		length := int(val)
-		bytes := r.read_at_least(length)!
-
-		buf << tp
-		buf << bytes_length
-		buf << bytes
-
-		h := Handshake.unpack(buf)!
-		i += buf.len
-		hs << h
-	}
-	return hs
-}
 
 // the size of encoded handshake list
 @[direct_array_access; inline]
@@ -199,25 +169,6 @@ fn (h HskPayload) tipe() !HandshakeType {
 		ServerHello { return .server_hello }
 		NewSessionTicket { return .new_session_ticket }
 	}
-}
-
-// pack_to_handshake_bytes build Handshake message from HskPayload and then serializes it to bytes.
-fn (h HskPayload) pack_to_handshake_bytes() ![]u8 {
-	hsk := h.pack_to_handshake()!
-	out := hsk.pack()!
-	return out
-}
-
-// pack_to_handshake build Handshake message from HskPayload
-fn (h HskPayload) pack_to_handshake() !Handshake {
-	tipe := h.tipe()!
-	payload := h.pack()!
-
-	hsk := Handshake{
-		tipe:    tipe
-		payload: payload
-	}
-	return hsk
 }
 
 // pack_hskpayload encodes handshake payload h into bytes array
@@ -332,7 +283,7 @@ fn size_chello(c ClientHello) int {
 	// 32 bytes of random
 	n += 32
 	// 1-byte of sessid.len and sessid
-	n += 1 + ch.sessid.len
+	n += 1 + c.sessid.len
 
 	// Arrays of ciphersuite was prepended by 2-bytes length
 	n += size_u16list_withlen[CipherSuite](c.csuites, .size2)
@@ -341,7 +292,7 @@ fn size_chello(c ClientHello) int {
 	n += 1 + c.cmeths.len
 
 	// extension list with prepended 2-bytes length
-	n += size_extlist_withlen(s.xslist, .size2)
+	n += size_extlist_withlen(c.xslist, .size2)
 
 	return n
 }
@@ -366,7 +317,7 @@ fn pack_chello(c ClientHello) ![]u8 {
 	out << pack_u16list_withlen[CipherSuite](c.csuites, .size2)!
 
 	// encodes compression method array with 1-byte length
-	out << pack_raw_withlen(c.cmeths, .size1)
+	out << pack_raw_withlen(c.cmeths, .size1)!
 
 	// encodes extension list with 2-bytes length
 	out << pack_extlist_withlen(c.xslist, .size2)!
@@ -382,8 +333,8 @@ fn parse_chello(bytes []u8) !ClientHello {
 	}
 	mut r := new_buffer(bytes)!
 	// read two-bytes version
-	val := r.read_u16()
-	ver := new_tlsversion(val)!
+	val := r.read_u16()!
+	ver := new_version(val)!
 
 	// read 32-bytes of random bytes
 	random := r.read_at_least(32)!
@@ -398,11 +349,11 @@ fn parse_chello(bytes []u8) !ClientHello {
 	csuites := parse_u16list[CipherSuite](ciphers_data, new_csuite)!
 
 	// read 1-btye of compression method length and the contents of compression method bytes
-	cm := r.read_u8()
+	cm := r.read_u8()!
 	cmeths := r.read_at_least(int(cm))!
 
 	// read extension list with 2-bytes length
-	xlen := r.read_u16()
+	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist(xs_bytes)!
 
@@ -421,6 +372,7 @@ fn parse_chello(bytes []u8) !ClientHello {
 	return ch
 }
 
+/*
 // check_compliance parse ServerHello with associated ClientHello
 fn (ch ClientHello) check_compliance(sh ServerHello) !bool {
 	// A client which receives a cipher suite that was not offered MUST abort the handshake
@@ -455,6 +407,7 @@ fn (ch ClientHello) check_compliance(sh ServerHello) !bool {
 	}
 	return true
 }
+*/
 
 // TLS 1.3 ServerHello handshake message
 //
@@ -489,7 +442,7 @@ fn size_shello(s ServerHello) int {
 	// 32-bytes of random
 	n += 32
 	// 1-byte of sessid.len plus sessid.len
-	n += 1 + sessid.len
+	n += 1 + s.sessid.len
 	// 2-bytes ciphersuite
 	n += 2
 	// 1-byte compression_method
@@ -536,8 +489,8 @@ fn parse_shello(bytes []u8) !ServerHello {
 	}
 	mut r := new_buffer(bytes)!
 	// read 2-bytes version
-	val := r.read_u16()
-	ver := new_tlsversion(val)!
+	val := r.read_u16()!
+	ver := new_version(val)!
 
 	// read 32-bytes of random bytes
 	random := r.read_at_least(32)!
@@ -554,7 +507,7 @@ fn parse_shello(bytes []u8) !ServerHello {
 	cmeth := r.read_u8()!
 
 	// read extension list with prepended length
-	xlen := r.read_u16()
+	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist(xs_bytes)!
 
@@ -684,7 +637,7 @@ fn parse_creq(b []u8) !CertificateRequest {
 	opaque_data := r.read_at_least(int(opaque_len))!
 
 	// read extension list with prepended 2-bytes length
-	xlen := r.read_u16()
+	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist(xs_bytes)!
 
@@ -791,10 +744,10 @@ fn parse_centry(b []u8) !CertificateEntry {
 	// read 3 bytes length of opaque
 	bol3 := r.read_at_least(3)!
 	opaque_len := u24_from_bytes(bol3)!
-	opaque := r.read_at_least(int(opaque_len))!
+	opaque := r.read_at_least(int(opaque_len.value))!
 
 	// read extension list with prepended length
-	xlen := r.read_u16()
+	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist(xs_bytes)!
 
@@ -832,8 +785,9 @@ fn parse_celist_withlen(bytes []u8) ![]CertificateEntry {
 	mut r := new_buffer(bytes)!
 	// read 3-bytes length of the arrays
 	bol3 := r.read_at_least(3)!
+	// arrays_len was Uint24 opaque
 	arrays_len := u24_from_bytes(bol3)!
-	arrays_data := r.read_at_least(int(arrays_len))!
+	arrays_data := r.read_at_least(int(arrays_len.value))!
 
 	// parse this array data into array of CertificateEntry
 	cs := parse_celist(arrays_data)!
@@ -887,7 +841,7 @@ fn pack_cert(c Certificate) ![]u8 {
 	mut out := []u8{cap: size_cert(c)}
 
 	// encodes 1-byte context.len and the context
-	out << pack_raw_withlen(c.context, .size1)
+	out << pack_raw_withlen(c.context, .size1)!
 
 	// encodes certificate list with 3-bytes length
 	out << pack_objlist_withlen[CertificateEntry](c.celist, pack_centry, size_centry,
@@ -899,10 +853,10 @@ fn pack_cert(c Certificate) ![]u8 {
 // parse_cert decodes bytes array into Certificate opaque and validates them.
 @[direct_array_access; inline]
 fn parse_cert(bytes []u8) !Certificate {
-	if b.len < min_certificate_size {
+	if bytes.len < min_certificate_size {
 		return error('Bad Certificate bytes: underflow')
 	}
-	mut r := new_buffer(b)!
+	mut r := new_buffer(bytes)!
 	// read certificate context
 	cr := r.read_u8()!
 	context := r.read_at_least(int(cr))!
@@ -912,15 +866,15 @@ fn parse_cert(bytes []u8) !Certificate {
 	length := u24_from_bytes(bol3)!
 
 	// parse certificate entries payload
-	celist_data := r.read_at_least(int(length))!
+	celist_data := r.read_at_least(int(length.value))!
 	celist := parse_celist(celist_data)!
 
-	c := Certificate{
+	cert := Certificate{
 		context: context
 		celist:  celist
 	}
 	// check
-	c.check_cert()!
+	cert.check_cert()!
 
 	return cert
 }
@@ -959,7 +913,7 @@ fn (c CertificateVerify) check_cv() ! {
 // pack_certverify encodes CertificateVerify cv into bytes array.
 @[direct_array_access; inline]
 fn pack_certverify(cv CertificateVerify) ![]u8 {
-	cv.check()!
+	cv.check_cv()!
 	mut out := []u8{cap: size_certverify(cv)}
 
 	// encodes signature algorithm
@@ -1102,7 +1056,7 @@ fn parse_nst(b []u8) !NewSessionTicket {
 	ticket := r.read_at_least(int(tkt_len))!
 
 	// read extension list with prepended length
-	xlen := r.read_u16()
+	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist(xs_bytes)!
 

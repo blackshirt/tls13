@@ -16,8 +16,8 @@ const min_extension_size = 4
 @[noinit]
 struct Extension {
 mut:
-	tipe Extensiotipe // u16 value
-	data []u8         // <0..2^16-1>
+	tipe ExtensionType // u16 value
+	data []u8          // <0..2^16-1>
 }
 
 // size_ext returns the size of serialized Extension, in bytes.
@@ -42,8 +42,8 @@ fn size_extlist_withlen(xs []Extension, n SizeT) int {
 @[inline]
 fn pack_ext(r Extension) ![]u8 {
 	mut out := []u8{cap: size_ext(r)}
-	// serialize Extensiotipe, its a u16 value
-	out << pack_u16item[Extensiotipe](r.tipe)
+	// serialize ExtensionType, its a u16 value
+	out << pack_u16item[ExtensionType](r.tipe)
 
 	// serialize extension data, includes this data length as u16 value
 	out << pack_raw_withlen(r.data, .size2)!
@@ -74,7 +74,7 @@ fn parse_ext(bytes []u8) !Extension {
 	}
 	mut r := new_buffer(bytes)!
 
-	// read Extensiotipe
+	// read ExtensionType
 	t := r.read_u16()!
 	tipe := new_exttype(t)!
 
@@ -134,13 +134,13 @@ fn parse_extlist(bytes []u8) ![]Extension {
 
 // filtered_by_tipe filters xs by tipe and returns the new result.
 @[direct_array_access]
-fn (xs []Extension) filtered_by_tipe(tipe Extensiotipe) []Extension {
+fn (xs []Extension) filtered_by_tipe(tipe ExtensionType) []Extension {
 	return xs.filter(it.tipe == tipe)
 }
 
 // returns if only single valid result filtered by tipe
 @[direct_array_access]
-fn (xs []Extension) validate_with_filter(tipe Extensiotipe) ![]Extension {
+fn (xs []Extension) validate_with_filter(tipe ExtensionType) ![]Extension {
 	filtered := xs.filter(it.tipe == tipe)
 	if filtered.len != 1 {
 		return error('null or multiples tipe')
@@ -177,6 +177,11 @@ const min_srvname_size = 3
 // Hostname was non-null bytes array, limit to max_u16 bytes
 type HostName = []u8
 
+// In order to provide any of the server names, clients MAY include an
+//   extension of type "server_name" in the (extended) client hello.  The
+//   "extension_data" field of this extension SHALL contain
+//   "ServerNameList"
+
 @[noinit]
 struct ServerName {
 mut:
@@ -184,9 +189,9 @@ mut:
 	name []u8
 }
 
-// new new_srvname was server name identification (SNI)
+// new new_svname was server name identification (SNI)
 @[inline]
-fn new_srvname(name string) !ServerName {
+fn new_svname(name string) !ServerName {
 	if !name.is_ascii() {
 		return error('not ASCII encoded byte string')
 	}
@@ -197,7 +202,7 @@ fn new_srvname(name string) !ServerName {
 }
 
 @[inline]
-fn size_srvname(s ServerName) int {
+fn size_svname(s ServerName) int {
 	mut n := 0
 	n += 1 // for tipe
 	match s.tipe {
@@ -211,15 +216,15 @@ fn size_srvname(s ServerName) int {
 	return n
 }
 
-// pack_srvname encodes ServerName s into bytes array
+// pack_svname encodes ServerName s into bytes array
 @[inline]
-fn pack_srvname(s ServerName) ![]u8 {
-	mut out := []u8{cap: size_srvname(s)}
+fn pack_svname(s ServerName) ![]u8 {
+	mut out := []u8{cap: size_svname(s)}
 
 	out << u8(s.tipe)
 	match s.tipe {
 		.host_name {
-			n += pack_raw_withlen(s.name, .size2)
+			out << pack_raw_withlen(s.name, .size2)!
 		}
 		else {
 			return error('unsupported name type')
@@ -229,7 +234,7 @@ fn pack_srvname(s ServerName) ![]u8 {
 }
 
 @[direct_array_access; inline]
-fn parse_srvname(b []u8) !ServerName {
+fn parse_svname(b []u8) !ServerName {
 	if b.len < min_srvname_size {
 		return error('srvname parse bytes underflow')
 	}
@@ -332,9 +337,13 @@ fn pack_spv(s SupportedVersions) ![]u8 {
 			out << pack_u16list_withlen[Version](s.verlist, .size1)!
 		}
 		.server_hello, .hello_retry_request {
-			out << pack_u16item[Version](s.verlist[0])!
+			out << pack_u16item[Version](s.verlist[0])
+		}
+		else {
+			return error('invalid msg_type for supported_versions')
 		}
 	}
+	return out
 }
 
 // parse_spv decodes bytes into SupportedVersions, its accepts msg_type param to determine
@@ -386,7 +395,7 @@ type Cookie = []u8
 // new_cookie creates cookies extension from bytes array.
 @[direct_array_access; inline]
 fn new_cookie(bytes []u8) !Cookie {
-	if bytes < min_cookie_size || btyes.len > max_cookie_size {
+	if bytes.len < min_cookie_size || bytes.len > max_cookie_size {
 		return error('invalid bytes length')
 	}
 	return Cookie(bytes)
@@ -428,7 +437,7 @@ fn parse_sigcheme_list(bytes []u8) ![]SignatureScheme {
 // ext_from_sigschemes creates .signature_algorithms extension type from arrays of SignatureScheme
 @[direct_array_access]
 fn ext_from_sigschemes(ss []SignatureScheme) !Extension {
-	xs_payload := pack_u16list_with_len[SignatureScheme](ss, .size2)!
+	xs_payload := pack_u16list_withlen[SignatureScheme](ss, .size2)!
 	return Extension{
 		tipe: .signature_algorithms
 		data: xs_payload
@@ -465,7 +474,7 @@ fn parse_namegroup_list(bytes []u8) ![]NamedGroup {
 // ext_from_namegroups creates .supported_groups extension type from array of NamedGroup
 @[direct_array_access]
 fn ext_from_namegroups(ns []NamedGroup) !Extension {
-	ns_payload := pack_u16list_with_len[NamedGroup](ns, .size2)!
+	ns_payload := pack_u16list_withlen[NamedGroup](ns, .size2)!
 	return Extension{
 		tipe: .supported_groups
 		data: ns_payload
@@ -520,7 +529,7 @@ fn pack_edi(e EarlyDataIndication) ![]u8 {
 	match e.msg_type {
 		.new_session_ticket {
 			mut max_easize := []u8{len: 4}
-			binary.big_endian_put_u32(mut max_easize, ed.max_eadata)
+			binary.big_endian_put_u32(mut max_easize, e.max_eadata)
 			return max_easize
 		}
 		.client_hello, .encrypted_extensions {
@@ -552,6 +561,9 @@ fn parse_edi(bytes []u8, msg_type HandshakeType) !EarlyDataIndication {
 		}
 		.encrypted_extensions {
 			e.msg_type = .encrypted_extensions
+		}
+		else {
+			return error('invalid msg_type for early data indication')
 		}
 	}
 	return e

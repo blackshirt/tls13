@@ -97,7 +97,7 @@ fn pack_u16item[T](t T) []u8 {
 // pack_u16list encodes arrays of u16-sized opaque T in ts into bytes array.
 @[direct_array_access]
 fn pack_u16list[T](ts []T) []u8 {
-	mut out := []u8{cap: 2 * t.len}
+	mut out := []u8{cap: 2 * ts.len}
 	for t in ts {
 		x := pack_u16item[T](t)
 		out << x
@@ -139,9 +139,6 @@ fn pack_u16list_withlen[T](ts []T, n SizeT) ![]u8 {
 			}
 			bol3 := u24_from_int(2 * ts.len)!
 			out << bol3.bytes()!
-		}
-		else {
-			return error('unsupported length')
 		}
 	}
 	// serializes the items
@@ -382,7 +379,7 @@ fn u24_from_int(val int) !Uint24 {
 		return error('u24_from_int: out of range value')
 	}
 	return Uint24{
-		value: val & mask_u24
+		value: u32(val) & mask_u24
 	}
 }
 
@@ -405,19 +402,20 @@ fn u24_from_bytes(b []u8, opt Uint24Options) !Uint24 {
 }
 
 // bytes serializes Uint24 as a bytes array.
+@[inline]
 fn (v Uint24) bytes(opt Uint24Options) ![]u8 {
 	mut b := []u8{len: 3}
 	match opt.endian {
 		0x00 {
-			b[0] = u8(v >> u32(16))
-			b[1] = u8(v >> u32(8))
-			b[2] = u8(v)
+			b[0] = u8(v.value >> u32(16))
+			b[1] = u8(v.value >> u32(8))
+			b[2] = u8(v.value)
 			return b
 		}
 		0x01 {
-			b[0] = u8(v)
-			b[1] = u8(v >> u32(8))
-			b[2] = u8(v >> u32(16))
+			b[0] = u8(v.value)
+			b[1] = u8(v.value >> u32(8))
+			b[2] = u8(v.value >> u32(16))
 			return b
 		}
 		else {

@@ -169,7 +169,7 @@ mut:
 // size_pskidentity returns the size of encoded PskIdentity p
 @[inline]
 fn size_pskidentity(p PskIdentity) int {
-	return 6 + psi.identity.len
+	return 6 + p.identity.len
 }
 
 // pack_pskidentity encodes PskIdentity p into bytes array
@@ -178,7 +178,7 @@ fn pack_pskidentity(p PskIdentity) ![]u8 {
 	mut out := []u8{cap: size_pskidentity(p)}
 	out << pack_raw_withlen(p.identity, .size2)!
 	mut obt := []u8{len: 4}
-	binary.big_endian_put_u32(mut obt, psi.tktage)
+	binary.big_endian_put_u32(mut obt, p.tktage)
 	out << obt
 
 	return out
@@ -187,7 +187,7 @@ fn pack_pskidentity(p PskIdentity) ![]u8 {
 // parse_pskidentity decodes bytes into PskIdentity
 @[direct_array_access; inline]
 fn parse_pskidentity(bytes []u8) !PskIdentity {
-	if b.len < 6 {
+	if bytes.len < min_pskidentity_size {
 		return error('PskIdentity bytes underflow')
 	}
 	mut r := new_buffer(bytes)!
@@ -227,7 +227,7 @@ fn parse_pskidentities_nolen(bytes []u8) ![]PskIdentity {
 	}
 	mut ps := []PskIdentity{cap: bytes.len / min_pskidentity_size}
 	mut i := 0
-	for i < bytes {
+	for i < bytes.len {
 		item := parse_pskidentity(bytes[i..])!
 		ps << item
 		i += size_pskidentity(item)
@@ -254,14 +254,14 @@ type PskBinderEntry = []u8 // <32..255>;
 
 // size_bdentry returns the size of encoded PskBinderEntry b
 @[inline]
-fn size_bdentry(b PskBinderEntry) int {
+fn size_bdentry(pb PskBinderEntry) int {
 	return 1 + pb.len
 }
 
 // pack_bdentry encodes PskBinderEntry b into bytes array
 @[direct_array_access; inline]
-fn pack_bdentry(b PskBinderEntry) ![]u8 {
-	mut out := []u8{cap: size_bdentry(b)}
+fn pack_bdentry(pb PskBinderEntry) ![]u8 {
+	mut out := []u8{cap: size_bdentry(pb)}
 	out << u8(pb.len)
 	out << pb
 
@@ -299,11 +299,11 @@ fn pack_bdentry_list(ps []PskBinderEntry) ![]u8 {
 	return pack_objlist_withlen[PskBinderEntry](ps, pack_bdentry, size_bdentry, .size2)!
 }
 
-// parse_bdentry_list_direct oarses bytes into array of PskBinderEntry directly, without the length part.
+// parse_bdentries_nolen oarses bytes into array of PskBinderEntry directly, without the length part.
 @[direct_array_access; inline]
-fn parse_bdentry_list_direct(bytes []u8) ![]PskBinderEntry {
+fn parse_bdentries_nolen(bytes []u8) ![]PskBinderEntry {
 	mut i := 0
-	mut ps := []PskBinderEntry{cap: bytes / min_pskbinderentry_size}
+	mut ps := []PskBinderEntry{cap: bytes.len / min_pskbinderentry_size}
 	for i < bytes.len {
 		item := parse_bdentry(bytes[i..])!
 		ps << item
@@ -312,17 +312,17 @@ fn parse_bdentry_list_direct(bytes []u8) ![]PskBinderEntry {
 	return ps
 }
 
-// parse_bdentry_list decodes bytes into array of PskBinderEntry with 2-bytes length
+// parse_bdentries decodes bytes into array of PskBinderEntry with 2-bytes length
 @[direct_array_access; inline]
-fn parse_bdentry_list(bytes []u8) ![]PskBinderEntry {
-	if b.len < min_pskbinderentrylist_size {
+fn parse_bdentries(bytes []u8) ![]PskBinderEntry {
+	if bytes.len < min_pskbinderentrylist_size {
 		return error('bad PskBinderEntryList bytes')
 	}
-	mut r := new_buffer(b)!
+	mut r := new_buffer(bytes)!
 	length := r.read_u16()!
 	bytes_data := r.read_at_least(int(length))!
 
-	return parse_bdentry_list_direct(bytes_data)!
+	return parse_bdentries_nolen(bytes_data)!
 }
 
 // OfferedPsks
@@ -367,13 +367,13 @@ fn parse_offeredpsks(b []u8) !OfferedPsks {
 
 	// read identities
 	ident_len := r.peek_u16()!
-	ident_bytes := r.read_at_least(int(idn_len))!
+	ident_bytes := r.read_at_least(int(ident_len))!
 	identities := parse_pskidentities_nolen(ident_bytes)!
 
 	// read binders
 	binders_len := r.peek_u16()!
 	binders_bytes := r.read_at_least(int(binders_len))!
-	binders := parse_bdentry_list_direct(binders_bytes)!
+	binders := parse_bdentries_nolen(binders_bytes)!
 
 	return OfferedPsks{
 		identities: identities

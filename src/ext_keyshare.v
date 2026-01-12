@@ -58,13 +58,13 @@ fn pack_ksext(k KeyShareExtension) ![]u8 {
 		.server_hello {
 			if k.is_hrr {
 				// treats as hello_retry_request message
-				return pack_u16item[NamedGroup](k.group)!
+				return pack_u16item[NamedGroup](k.group)
 			}
 			// otherwise, its normal server_hello message
 			return pack_ksentry(k.server_share)!
 		}
 		.hello_retry_request {
-			return pack_u16item[NamedGroup](k.group)!
+			return pack_u16item[NamedGroup](k.group)
 		}
 		else {
 			return error('invalid msg_type for key_share')
@@ -80,7 +80,7 @@ fn parse_ksext(bytes []u8, msg_type HandshakeType, is_hrr bool) !KeyShareExtensi
 		.client_hello {
 			kx.client_shares = parse_ksentries(bytes)!
 			kx.is_hrr = false
-			ks.msg_type = .client_hello
+			kx.msg_type = .client_hello
 		}
 		.server_hello {
 			if is_hrr {
@@ -149,7 +149,7 @@ fn size_ksentry(k KeyShareEntry) int {
 @[inline]
 fn pack_ksentry(k KeyShareEntry) ![]u8 {
 	mut out := []u8{cap: size_ksentry(k)}
-	out << pack_u16item[NamedGroup](k.group)!
+	out << pack_u16item[NamedGroup](k.group)
 	out << pack_raw_withlen(k.ksdata, .size2)!
 	return out
 }
@@ -194,7 +194,7 @@ fn parse_ksentries(bytes []u8) ![]KeyShareEntry {
 	mut r := new_buffer(bytes)!
 
 	// length, was u16-sized
-	bol2 := r.read_u16()
+	bol2 := r.read_u16()!
 
 	ks_bytes := r.read_at_least(int(bol2))!
 	return parse_ksentries_nolen(ks_bytes)!
@@ -204,7 +204,7 @@ fn parse_ksentries(bytes []u8) ![]KeyShareEntry {
 @[direct_array_access; inline]
 fn parse_ksentries_nolen(bytes []u8) ![]KeyShareEntry {
 	mut i := 0
-	mut ks := []KeyShareEntry{cap: bytes / min_ksentry_size}
+	mut ks := []KeyShareEntry{cap: bytes.len / min_ksentry_size}
 	for i < bytes.len {
 		item := parse_ksentry(bytes[i..])!
 		ks.append(item)

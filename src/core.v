@@ -714,8 +714,7 @@ fn digest_size(c CipherSuite) int {
 			return 32
 		}
 		.tls_aes256gcm_sha384 {
-			rerturn
-			48
+			return 48
 		}
 		else {
 			panic('unsupported cipher suite')

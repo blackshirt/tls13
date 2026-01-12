@@ -106,15 +106,10 @@ fn (mut r RContext) encrypt_internal(rec TlsRecord, wkey []u8, wiv []u8, tp Cont
 	// build additional_data, ie, TlsCiphertext header
 	ad_data := make_adata(tp, ver, length)!
 	// build write nonce
-	wr_nonce := r.make_wnonce(wiv)
+	wr_nonce := make_wnonce(wiv, r.cwseq, nonce_size(r.c))
 
 	// perform aead encrypt
-	ciphertext, tag := r.aead.encrypt(plaintext, wkey, wr_nonce, ad_data)!
-
-	// build encrypted payload
-	mut encrypted_text := []u8{len: ciphertext.len + tag.len}
-	encrypted_text << ciphertext
-	encrypted_text << tag
+	encrypted_text := r.aead.encrypt(plaintext, wkey, wr_nonce, ad_data)!
 
 	// increases write seq number
 	r.inc_wseq()
@@ -132,7 +127,7 @@ fn (mut r RContext) decrypt(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
 	// build additional data, read nonce and other stuffs needed for decryption process
 	ad_data := make_adata(c.otype, c.version, c.payload.len)!
 	// make a read nonce from the current read sequence number and peer_read_iv riv
-	rnonce := make_rnonce(riv, r.crseq, nonce_size(r.c))!
+	rnonce := make_rnonce(riv, r.crseq, nonce_size(r.c))
 
 	// As a note, TLSCiphertext.payload field is containing ciphertext output of `.encrypt()`
 	// operation plus appended with mac parts, so we split it to feed into decryption step.
@@ -159,14 +154,14 @@ fn (mut r RContext) decrypt(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
 // decrypt_rec treats TlsRecord rec as encrypted form of TlsCiphertext and does
 // unprotection (decryption) step and return the decryped TlsRecord.
 @[inline]
-fn (mut r RContext) decrypt_rec(rec TlsRecord) !TlsRecord {
+fn (mut r RContext) decrypt_rec(rec TlsRecord, rkey []u8, riv []u8) !TlsRecord {
 	// treats record rec as encrypted form of TlsCiphertext
 	c := TlsCiphertext{
 		otype:   rec.ctype
 		version: rec.version
 		payload: rec.fragment
 	}
-	return r.decrypt(c)!
+	return r.decrypt(c, rkey, riv)!
 }
 
 // inc_wseq increases context write sequence number by one, or panic if it wraps 64-bit number
@@ -208,7 +203,7 @@ fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
 // make_wnonce builds write nonce for the write initialization vector wiv for the
 // current write sequence cwseq and length of the underlying nonce size in ivlength
 @[direct_array_access; inline]
-fn make_wnonce(wiv []u8, cwseq u64, ivlength int) ![]u8 {
+fn make_wnonce(wiv []u8, cwseq u64, ivlength int) []u8 {
 	// recommended nonce size
 	mut wnonce := []u8{len: ivlength}
 	// The 64-bit record sequence number is encoded in network byte
@@ -226,7 +221,7 @@ fn make_wnonce(wiv []u8, cwseq u64, ivlength int) ![]u8 {
 @[direct_array_access; inline]
 fn make_rnonce(riv []u8, crseq u64, ivlength int) []u8 {
 	mut rnonce := []u8{len: ivlength}
-	binary.big_endian_put_u64_end(mut rnonce, r.crseq)
+	binary.big_endian_put_u64_end(mut rnonce, crseq)
 	// The padded sequence number is XORed with either the static
 	// client_read_iv or server_read_iv (depending on the role).
 	for i := 0; i < rnonce.len; i++ {
@@ -268,10 +263,10 @@ fn size_record(r TlsRecord) int {
 fn pack_record(r TlsRecord) ![]u8 {
 	mut out := []u8{cap: size_record(r)}
 
-	out << u8(p.ctype)
+	out << u8(r.ctype)
 	out << pack_u16item[Version](r.version)
 	out << pack_u16item[int](r.fragment.len)
-	out << p.fragment
+	out << r.fragment
 
 	return out
 }
@@ -285,7 +280,7 @@ fn (r TlsRecord) expect_type(tp ContentType) bool {
 // set_version sets the record version
 @[inline]
 fn (mut r TlsRecord) set_version(ver Version) ! {
-	if ver !in [tls_v11, .v12, tls_v13] {
+	if ver !in [.v13, .v12, .v11] {
 		return error('version not supported')
 	}
 	if r.version == ver {
@@ -299,15 +294,15 @@ fn (mut r TlsRecord) set_version(ver Version) ! {
 // By default is to use `.nopad` policy in RecordLayer.
 fn (r TlsRecord) into_inner(pm PaddingMode) !TlsInnerText {
 	// build the zeros padding with padding mode in pm
-	pad := pad_for_fragment(p.fragment, pm)!
+	pad := pad_for_fragment(r.fragment, pm)!
 	// when this record treated as plaintext record, The fragment length MUST NOT exceed 2^14 bytes.
 	// event its padded with the zeros padding
-	if p.fragment.len + pad.len > max_fragment_size {
+	if r.fragment.len + pad.len > max_fragment_size {
 		return error('Fragment and pad length: overflow')
 	}
 	return TlsInnerText{
-		content: p.fragment
-		ctype:   p.ctype
+		content: r.fragment
+		ctype:   r.ctype
 		zeros:   pad
 	}
 }
@@ -339,7 +334,7 @@ mut:
 @[inline]
 fn size_innertext(p TlsInnerText) int {
 	// without length
-	return p.content.len + 1 + zeros.len
+	return p.content.len + 1 + p.zeros.len
 }
 
 // pack transforms TlsInnerText into bytes
@@ -420,12 +415,12 @@ fn size_ciphertext(c TlsCiphertext) int {
 @[inline]
 fn pack_ciphertext(c TlsCiphertext) ![]u8 {
 	// The length MUST NOT exceed 2^14 + 256 bytes
-	if tc.payload.len > max_payload_size {
+	if c.payload.len > max_payload_size {
 		return error('Bad TlsCiphertext overflow payload')
 	}
 	mut out := []u8{cap: size_ciphertext(c)}
-	out << pack_u8item[ContentType](c.ctype)
-	out << pack_u16item[Version](c.version)!
+	out << u8(c.otype)
+	out << pack_u16item[Version](c.version)
 	out << pack_raw_withlen(c.payload, .size2)!
 
 	return out
@@ -437,7 +432,7 @@ fn parse_ciphertext(bytes []u8) !TlsCiphertext {
 	if bytes.len < min_ciphertext_size {
 		return error('Bad TlsCiphertext bytes: underflow')
 	}
-	mut r := new_buffer(b)!
+	mut r := new_buffer(bytes)!
 	// Get opaque type
 	opq := r.read_u8()!
 	otype := new_ctntype(opq)!
