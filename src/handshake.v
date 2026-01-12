@@ -5,7 +5,6 @@
 // TLS 1.3 handshake module
 module tls13
 
-import crypto.hmac
 import encoding.binary
 import crypto.internal.subtle
 
@@ -355,7 +354,7 @@ fn parse_chello(bytes []u8) !ClientHello {
 	// read extension list with 2-bytes length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_extlist(xs_bytes)!
+	xs := parse_extlist_nolen(xs_bytes)!
 
 	// build the result
 	ch := ClientHello{
@@ -509,7 +508,7 @@ fn parse_shello(bytes []u8) !ServerHello {
 	// read extension list with prepended length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_extlist(xs_bytes)!
+	xs := parse_extlist_nolen(xs_bytes)!
 
 	// build ServerHello message
 	sh := ServerHello{
@@ -572,7 +571,7 @@ fn pack_ee(ee EncryptedExtensions) ![]u8 {
 // parse_ee decodes bytes into EncryptedExtensions
 @[direct_array_access; inline]
 fn parse_ee(bytes []u8) !EncryptedExtensions {
-	return EncryptedExtensions(parse_extlist_withlen(bytes)!)
+	return EncryptedExtensions(parse_extlist(bytes)!)
 }
 
 // B.3.2.  Server Parameters Messages
@@ -639,7 +638,7 @@ fn parse_creq(b []u8) !CertificateRequest {
 	// read extension list with prepended 2-bytes length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_extlist(xs_bytes)!
+	xs := parse_extlist_nolen(xs_bytes)!
 
 	cr := CertificateRequest{
 		opaque: opaque_data
@@ -749,7 +748,7 @@ fn parse_centry(b []u8) !CertificateEntry {
 	// read extension list with prepended length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_extlist(xs_bytes)!
+	xs := parse_extlist_nolen(xs_bytes)!
 
 	ce := CertificateEntry{
 		opaque: opaque
@@ -1058,7 +1057,7 @@ fn parse_nst(b []u8) !NewSessionTicket {
 	// read extension list with prepended length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
-	xs := parse_extlist(xs_bytes)!
+	xs := parse_extlist_nolen(xs_bytes)!
 
 	st := NewSessionTicket{
 		lifetime: lifetime

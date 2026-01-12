@@ -6,7 +6,6 @@
 module tls13
 
 import arrays
-import encoding.binary
 
 // sort does sorting of Version arrays in descending order, from biggest to the lowest version.
 @[direct_array_access]

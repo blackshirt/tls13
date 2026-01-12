@@ -148,9 +148,23 @@ fn test_servernameextension_encode_decode() ! {
 	data := [u8(0x00), 0x00, 0x00, 0x18, 0x00, 0x16, 0x00, 0x00, 0x13, 0x65, 0x78, 0x61, 0x6d,
 		0x70, 0x6c, 0x65, 0x2e, 0x75, 0x6c, 0x66, 0x68, 0x65, 0x69, 0x6d, 0x2e, 0x6e, 0x65, 0x74]
 
-	sn_ext := parse_svname(data)!
-	assert sn_ext.len == 1
-	assert sn_ext[0].name_type == .host_name
-	assert sn_ext[0].name.len == 0x13 // 19
-	assert sn_ext[0].name.bytestr() == 'example.ulfheim.net'
+	sn_ext := parse_ext(data)!
+	assert sn_ext.tipe == .server_name
+	assert sn_ext.data.len == 24
+
+	svlist := parse_svnlist(sn_ext.data)!
+	assert svlist.len == 1
+	assert svlist[0].tipe == .host_name
+	assert svlist[0].name.len == 0x13 // 19
+	assert svlist[0].name.bytestr() == 'example.ulfheim.net'
+
+	// serializes back svlist into bytes and match with extension data
+	svlist_out := pack_svnlist(svlist)!
+	assert sn_ext.data == svlist_out
+
+	svlist_ext := ext_from_svnlist(svlist)!
+	svlist_ext_out := pack_ext(svlist_ext)!
+
+	// assert for matching original data
+	assert svlist_ext_out == data
 }

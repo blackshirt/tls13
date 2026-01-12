@@ -106,21 +106,21 @@ fn (mut xs []Extension) append(e Extension) {
 	xs << e
 }
 
-// parse_extlist_withlen decodes bytes into arrays of Extension with 2-bytes length
+// parse_extlist decodes bytes into arrays of Extension with 2-bytes length
 @[direct_array_access]
-fn parse_extlist_withlen(bytes []u8) ![]Extension {
+fn parse_extlist(bytes []u8) ![]Extension {
 	if bytes.len < 2 {
 		return error('Bad ExtensionList bytes')
 	}
 	mut r := new_buffer(bytes)!
 	length := r.read_u16()!
 	xs_bytes := r.read_at_least(int(length))!
-	return parse_extlist(xs_bytes)!
+	return parse_extlist_nolen(xs_bytes)!
 }
 
-// parse_extlist decodes bytes into arrays of Extension, without prepended length
+// parse_extlist_nolen decodes bytes into arrays of Extension, without prepended length
 @[direct_array_access; inline]
-fn parse_extlist(bytes []u8) ![]Extension {
+fn parse_extlist_nolen(bytes []u8) ![]Extension {
 	mut i := 0
 	mut xs := []Extension{cap: bytes.len / 4}
 	for i < bytes.len {
@@ -177,11 +177,8 @@ const min_srvname_size = 3
 // Hostname was non-null bytes array, limit to max_u16 bytes
 type HostName = []u8
 
-// In order to provide any of the server names, clients MAY include an
-//   extension of type "server_name" in the (extended) client hello.  The
-//   "extension_data" field of this extension SHALL contain
-//   "ServerNameList"
-
+// TLS 1.3 ServerName
+//
 @[noinit]
 struct ServerName {
 mut:
@@ -257,6 +254,84 @@ fn parse_svname(b []u8) !ServerName {
 	return sv
 }
 
+// In order to provide any of the server names, clients MAY include an
+//   extension of type "server_name" in the (extended) client hello.  The
+//   "extension_data" field of this extension SHALL contain
+//   "ServerNameList"
+//
+// ext_from_svnlist creates a server_name type of Extension
+@[direct_array_access; inline]
+fn ext_from_svnlist(sv []ServerName) !Extension {
+	return Extension{
+		tipe: .server_name
+		data: pack_svnlist(sv)!
+	}
+}
+
+// size_svnlist returns the size of encoded sv with 2-bytes length
+@[direct_array_access; inline]
+fn size_svnlist(sv []ServerName) int {
+	return 2 + size_svnlist_nolen(sv)
+}
+
+// size_svnlist_nolen returns the size of encoded sv without the length part
+@[direct_array_access; inline]
+fn size_svnlist_nolen(sv []ServerName) int {
+	mut n := 0
+	for item in sv {
+		n += size_svname(item)
+	}
+	return n
+}
+
+// pack_svnlist encodes  array of ServerName into bytes array with 2-bytes length
+@[direct_array_access; inline]
+fn pack_svnlist(sv []ServerName) ![]u8 {
+	size := size_svnlist_nolen(sv)
+	if size > max_u16 {
+		return error('server name list size exceed max_u16')
+	}
+	mut out := []u8{cap: 2 + size}
+	// writes out the length
+	out << pack_u16item[int](size)
+	out << pack_svnlist_nolen(sv)!
+
+	return out
+}
+
+// pack_svnlist_nolen encodes array of ServerName into bytes array without the length part.
+@[direct_array_access; inline]
+fn pack_svnlist_nolen(sv []ServerName) ![]u8 {
+	size := size_svnlist_nolen(sv)
+	mut out := []u8{cap: size}
+	for item in sv {
+		out << pack_svname(item)!
+	}
+	return out
+}
+
+// parse_svnlist decodes bytes into array of ServerName with 2-bytes length
+@[direct_array_access; inline]
+fn parse_svnlist(bytes []u8) ![]ServerName {
+	mut r := new_buffer(bytes)!
+	length := r.read_u16()!
+	svbytes := r.read_at_least(int(length))!
+	return parse_svnlist_nolen(svbytes)!
+}
+
+// parse_svnlist_nolen decodes bytes into array of ServerName without length part.
+@[direct_array_access; inline]
+fn parse_svnlist_nolen(bytes []u8) ![]ServerName {
+	mut i := 0
+	mut sv := []ServerName{cap: bytes.len / min_srvname_size}
+	for i < bytes.len {
+		item := parse_svname(bytes[i..])!
+		sv << item
+		i += size_svname(item)
+	}
+	return sv
+}
+
 // 4.2.1.  Supported Versions extension
 //
 // struct {
@@ -271,6 +346,8 @@ fn parse_svname(b []u8) !ServerName {
 //
 const default_supported_version = [Version.v13]
 
+// TLS 1.3 SupportedVersions
+//
 @[noinit]
 struct SupportedVersions {
 mut:
