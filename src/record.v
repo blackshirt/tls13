@@ -271,6 +271,33 @@ fn pack_record(r TlsRecord) ![]u8 {
 	return out
 }
 
+@[direct_array_access; inline]
+fn parse_rec(bytes []u8) !TlsRecord {
+	if bytes.len < min_record_size {
+		return error('rec size underflow')
+	}
+	mut r := new_buffer(bytes)!
+	// read 1-byte type
+	tp := r.read_u8()!
+	ctype := new_ctntype(tp)!
+
+	// read 2-bytes version
+	v := r.read_u16()!
+	ver := new_version(v)!
+
+	// read 2-bytes fragment length
+	flen := r.read_u16()!
+
+	// read fragment bytes
+	fbytes := r.read_at_least(int(flen))!
+
+	return TlsRecord{
+		ctype:    ctype
+		version:  ver
+		fragment: fbytes
+	}
+}
+
 // expect_type checks whether this record has a ContentType tp
 @[inline]
 fn (r TlsRecord) expect_type(tp ContentType) bool {
