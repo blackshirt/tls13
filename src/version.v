@@ -6,16 +6,15 @@
 module tls13
 
 import arrays
-import encoding.binary
 
 // sort does sorting of Version arrays in descending order, from biggest to the lowest version.
 @[direct_array_access]
 fn (mut tv []Version) sort() []Version {
 	tv.sort_with_compare(fn (v1 &Version, v2 &Version) int {
-		if v1 < v2 {
+		if int(v1) < int(v2) {
 			return 1
 		}
-		if v1 > v2 {
+		if int(v1) > int(v2) {
 			return -1
 		}
 		return 0

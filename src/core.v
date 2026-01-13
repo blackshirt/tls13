@@ -49,15 +49,16 @@ fn new_version(val u16) !Version {
 	}
 }
 
-// ContentType is content type of TLS 1.3 record defined as an u8 value
+// TLS 1.3 Content Type
 //
+// ContentType is a content type of TLS 1.3 record defined as an u8 value
 enum ContentType as u8 {
 	invalid            = 0
-	change_cipher_spec = 20
-	alert              = 21
-	handshake          = 22
-	application_data   = 23
-	heartbeat          = 24
+	change_cipher_spec = 20 // 0x14
+	alert              = 21 // 0x15
+	handshake          = 22 // 0x16
+	application_data   = 23 // 0x17
+	heartbeat          = 24 // 0x18
 }
 
 // new_ctntype creates a new ContentType from byte value.
@@ -79,7 +80,7 @@ fn new_ctntype(val u8) !ContentType {
 	}
 }
 
-// string representation of ContentType c
+// str returns string representation of ContentType c
 fn (c ContentType) str() string {
 	match c {
 		.invalid { return 'INVALID' }
@@ -91,17 +92,76 @@ fn (c ContentType) str() string {
 	}
 }
 
+// TLS 1.3 Handshake message type
+//
+// HandshakeType is a TLS 1.3 handshake type defined as an u8 value
+enum HandshakeType as u8 {
+	hello_request        = 0 // _RESERVED
+	client_hello         = 1
+	server_hello         = 2
+	hello_verify_request = 3 // _RESERVED
+	new_session_ticket   = 4
+	end_of_early_data    = 5
+	hello_retry_request  = 6 // _RESERVED =
+	encrypted_extensions = 8
+	certificate          = 11
+	server_key_exchange  = 12 // _RESERVED
+	certificate_request  = 13
+	server_hello_done    = 14 // _RESERVED
+	certificate_verify   = 15
+	client_key_exchange  = 16 // _RESERVED
+	finished             = 20
+	certificate_url      = 21 // _RESERVED
+	certificate_status   = 22 // _RESERVED
+	supplemental_data    = 23 // _RESERVED
+	key_update           = 24
+	message_hash         = 254
+}
+
+// new_hsktype creates a HandshakeType from byte value
+@[inline]
+fn new_hsktype(val u8) !HandshakeType {
+	match val {
+		// vfmt off
+		0x00 { return .hello_request }
+		0x01 { return .client_hello }
+		0x02 { return .server_hello }
+		0x03 { return .hello_verify_request }
+		0x04 { return .new_session_ticket }
+		0x05 { return .end_of_early_data }
+		0x06 { return .hello_retry_request }
+		0x08 { return .encrypted_extensions }
+		0x0b { return .certificate }
+		0x0c { return .server_key_exchange }
+		0x0d { return .certificate_request }
+		0x0e { return .server_hello_done }
+		0x0f { return .certificate_verify }
+		0x10 { return .client_key_exchange }
+		0x14 { return .finished }
+		0x15 { return .certificate_url }
+		0x16 { return .certificate_status }
+		0x17 { return .supplemental_data }
+		0x18 { return .key_update }
+		0xfe { return .message_hash }
+		else {
+			return error('unsupported value for HandshakeType')
+		}
+		// vfmt on
+	}
+}
+
 // B.2.  Alert Messages
 //
 // enum { warning(1), fatal(2), (255) } AlertLevel;
-enum AlertLevel as u8 {
+enum Level as u8 {
 	warning = 0x01
 	fatal   = 0x02
 	// 255
 }
 
+// new_level creates a new alert level from byte value.
 @[inline]
-fn new_alert(val u8) !AlertLevel {
+fn new_level(val u8) !Level {
 	match val {
 		0x01 { return .warning }
 		0x02 { return .fatal }
@@ -109,17 +169,18 @@ fn new_alert(val u8) !AlertLevel {
 	}
 }
 
+// str returns string representation of this level
 @[inline]
-fn (al AlertLevel) str() string {
+fn (al Level) str() string {
 	match al {
 		.warning { return 'WARNING' }
 		.fatal { return 'FATAL' }
 	}
 }
 
-// TLS 1.3 AlertDescription
+// TLS 1.3 Description
 //
-enum AlertDescription as u8 {
+enum Description as u8 {
 	close_notify                    = 0
 	unexpected_message              = 10
 	bad_record_mac                  = 20
@@ -156,8 +217,9 @@ enum AlertDescription as u8 {
 	no_application_protocol         = 120
 }
 
+// new_desc creates a Description from byte value
 @[inline]
-fn new_alertdesc(val u8) !AlertDescription {
+fn new_desc(val u8) !Description {
 	match val {
 		0 { return .close_notify }
 		10 { return .unexpected_message }
@@ -193,64 +255,64 @@ fn new_alertdesc(val u8) !AlertDescription {
 		115 { return .unknown_psk_identity }
 		116 { return .certificate_required }
 		120 { return .no_application_protocol }
-		else { return error('unsupported AlertDescription value') }
+		else { return error('unsupported Description value') }
 	}
 }
 
-// HandshakeType is a TLS 1.3 handshake type defined as an u8 value
-//
-enum HandshakeType as u8 {
-	hello_request        = 0 // _RESERVED
-	client_hello         = 1
-	server_hello         = 2
-	hello_verify_request = 3 // _RESERVED
-	new_session_ticket   = 4
-	end_of_early_data    = 5
-	hello_retry_request  = 6 // _RESERVED =
-	encrypted_extensions = 8
-	certificate          = 11
-	server_key_exchange  = 12 // _RESERVED
-	certificate_request  = 13
-	server_hello_done    = 14 // _RESERVED
-	certificate_verify   = 15
-	client_key_exchange  = 16 // _RESERVED
-	finished             = 20
-	certificate_url      = 21 // _RESERVED
-	certificate_status   = 22 // _RESERVED
-	supplemental_data    = 23 // _RESERVED
-	key_update           = 24
-	message_hash         = 254
+// str returns string representation of this Description ad.
+fn (ad Description) str() string {
+	match ad {
+		.close_notify { return 'CLOSE_NOTIFY' }
+		.unexpected_message { return 'UNEXPECTED_MESSAGE' }
+		.bad_record_mac { return 'BAD_RECORD_MAC' }
+		.decryption_failed { return 'DECRYPTION_FAILED' }
+		.record_overflow { return 'RECORD_OVERFLOW' }
+		.decompression_failure { return 'DECOMPRESSION_FAILURE' }
+		.handshake_failure { return 'HANDSHAKE_FAILURE' }
+		.no_certificate { return 'NO_CERTIFICATE' }
+		.bad_certificate { return 'BAD_CERTIFICATE' }
+		.unsupported_certificate { return 'UNSUPPORTED_CERTIFICATE' }
+		.certificate_revoked { return 'CERTIFICATE_REVOKED' }
+		.certificate_expired { return 'CERTIFICATE_EXPIRED' }
+		.certificate_unknown { return 'CERTIFICATE_UNKNOWN' }
+		.illegal_parameter { return 'ILLEGAL_PARAMETER' }
+		.unknown_ca { return 'UNKNOWN_CA' }
+		.access_denied { return 'ACCESS_DENIED' }
+		.decode_error { return 'DECODE_ERROR' }
+		.decrypt_error { return 'DECRYPT_ERROR' }
+		.export_restriction { return 'EXPORT_RESTRICTION' }
+		.protocol_version { return 'PROTOCOL_VERSION' }
+		.insufficient_security { return 'INSUFFICIENT_SECURITY' }
+		.internal_error { return 'INTERNAL_ERROR' }
+		.inappropriate_fallback { return 'INAPPROPRIATE_FALLBACK' }
+		.user_canceled { return 'USER_CANCELED' }
+		.no_renegotiation { return 'NO_RENEGOTIATION' }
+		.missing_extension { return 'MISSING_EXTENSION' }
+		.unsupported_extension { return 'UNSUPPORTED_EXTENSION' }
+		.certificate_unobtainable { return 'CERTIFICATE_UNOBTAINABLE' }
+		.unrecognized_name { return 'UNRECOGNIZED_NAME' }
+		.bad_certificate_status_response { return 'BAD_CERTIFICATE_STATUS_RESPONSE' }
+		.bad_certificate_hash_value { return 'BAD_CERTIFICATE_HASH_VALUE' }
+		.unknown_psk_identity { return 'UNKNOWN_PSK_IDENTITY' }
+		.certificate_required { return 'CERTIFICATE_REQUIRED' }
+		.no_application_protocol { return 'NO_APPLICATION_PROTOCOL' }
+	}
 }
 
-// new_hsktype creates HandshakeType from byte value
+// TLS 1.3 Alert messages
+//
+@[noinit]
+struct Alert {
+mut:
+	level Level
+	desc  Description
+}
+
 @[inline]
-fn new_hsktype(val u8) !HandshakeType {
-	match val {
-		// vfmt off
-		0x00 { return .hello_request }
-		0x01 { return .client_hello }
-		0x02 { return .server_hello }
-		0x03 { return .hello_verify_request }
-		0x04 { return .new_session_ticket }
-		0x05 { return .end_of_early_data }
-		0x06 { return .hello_retry_request }
-		0x08 { return .encrypted_extensions }
-		0x0b { return .certificate }
-		0x0c { return .server_key_exchange }
-		0x0d { return .certificate_request }
-		0x0e { return .server_hello_done }
-		0x0f { return .certificate_verify }
-		0x10 { return .client_key_exchange }
-		0x14 { return .finished }
-		0x15 { return .certificate_url }
-		0x16 { return .certificate_status }
-		0x17 { return .supplemental_data }
-		0x18 { return .key_update }
-		0xfe { return .message_hash }
-		else {
-			return error('unsupported value for HandshakeType')
-		}
-		// vfmt on
+fn new_alert(lv Level, desc Description) Alert {
+	return Alert{
+		level: lv
+		desc:  desc
 	}
 }
 
@@ -271,8 +333,9 @@ fn new_nametype(val u8) !NameType {
 	}
 }
 
-// ExtensionType is the type of TLS 1.3 Extension, as u16 value
+// TLS 1.3 Extension
 //
+// ExtensionType is the type of TLS 1.3 Extension, as u16 value
 enum ExtensionType as u16 {
 	server_name                           = 0
 	max_fragment_length                   = 1
@@ -416,8 +479,9 @@ fn new_exttype(val u16) !ExtensionType {
 	}
 }
 
-// SignatureScheme is a TLS 1.3 Signature sce value, defined as u16 value
+// TlS 1.3 SignatureScheme
 //
+// SignatureScheme is a signature algorithms may be used in digital signatures, defined as u16 value
 enum SignatureScheme as u16 {
 	rsa_pkcs1_sha256       = 0x0401
 	rsa_pkcs1_sha384       = 0x0501
@@ -519,6 +583,8 @@ fn (s SignatureScheme) str() string {
 
 // TLS 1.3 NamedGroup
 //
+// A TLS 1.3 NamedGroup is set of opaques that both the client and server agree upon during
+// the handshake to perform the key exchange, securely generating the shared secret keys for the session,
 enum NamedGroup as u16 {
 	secp256r1 = 0x0017
 	secp384r1 = 0x0018
@@ -532,6 +598,7 @@ enum NamedGroup as u16 {
 	ffdhe8192 = 0x0104
 }
 
+// new_group creates a NamedGroup from u16 value
 @[inline]
 fn new_group(val u16) !NamedGroup {
 	match val {
@@ -550,6 +617,24 @@ fn new_group(val u16) !NamedGroup {
 }
 
 // TLS 1.3 CipherSuite
+//
+// CipherSuite is a symmetric cipher suite defines the pair of the AEAD algorithm and
+// hash algorithm to be used with HKDF.
+// Its defined as:
+// 			  +------------------------------+-------------+
+//            | Description                  | Value       |
+//            +------------------------------+-------------+
+//            | TLS_AES_128_GCM_SHA256       | {0x13,0x01} |
+//            |                              |             |
+//            | TLS_AES_256_GCM_SHA384       | {0x13,0x02} |
+//            |                              |             |
+//            | TLS_CHACHA20_POLY1305_SHA256 | {0x13,0x03} |
+//            |                              |             |
+//            | TLS_AES_128_CCM_SHA256       | {0x13,0x04} |
+//            |                              |             |
+//            | TLS_AES_128_CCM_8_SHA256     | {0x13,0x05} |
+//            +------------------------------+-------------+
+// See B.4.  Cipher Suites at https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.4
 //
 enum CipherSuite as u16 {
 	tls_aes128gcm_sha256            = 0x1301
@@ -584,8 +669,7 @@ fn (c CipherSuite) str() string {
 			return 'TLS_AES256GCM_SHA384'
 		}
 		.tls_chacha20poly1305_sha256 {
-			return ''
-			TLS_CHACHA20POLY1305_SHA256
+			return 'TLS_CHACHA20POLY1305_SHA256'
 		}
 		.tls_aes128ccm_sha256 {
 			return 'TLS_AES128CCM_SHA256'
@@ -599,11 +683,70 @@ fn (c CipherSuite) str() string {
 	}
 }
 
-// ChangeCipherSpec
+// Helpers for CipherSuite related things
+//
+
+// tag_size returns standard size of underlying AEAD tag output defined by this ciphersuite, in bytes.
+@[inline]
+fn tag_size(c CipherSuite) int {
+	match c {
+		// normally, this ciphersuite was 16-bytes tag output
+		.tls_aes128gcm_sha256, .tls_aes256gcm_sha384, .tls_chacha20poly1305_sha256 {
+			return 16
+		}
+		else {
+			eprintln('unsupported ciphersuite')
+			exit(1)
+		}
+	}
+}
+
+// nonce_size returns standar of nonce (initialization vector) size in bytes,
+// for underlying AEAD defined by this ciphersuite.
+@[inline]
+fn nonce_size(c CipherSuite) int {
+	match c {
+		// by default, its only support for 12-bytes nonce
+		.tls_aes128gcm_sha256, .tls_aes256gcm_sha384, .tls_chacha20poly1305_sha256 {
+			return 12
+		}
+		else {
+			eprintln('unsupported ciphersuite')
+			exit(1)
+		}
+	}
+}
+
+// digest_size returns the size of hash (digest) of underlying hash algorithm defined by this ciphersuite.
+@[inline]
+fn digest_size(c CipherSuite) int {
+	match c {
+		.tls_chacha20poly1305_sha256 {
+			return 32
+		}
+		.tls_aes128ccm8_sha256 {
+			return 32
+		}
+		.tls_aes128gcm_sha256 {
+			return 32
+		}
+		.tls_aes256gcm_sha384 {
+			return 48
+		}
+		else {
+			panic('unsupported cipher suite')
+		}
+	}
+}
+
+// ChangeCipherSpec message
+//
 enum ChangeCipherSpec as u8 {
+	// only support for single byte value, defined as u8(0x01)
 	ccs = 0x01
 }
 
+// new_ccs creates a new ChangeCipherSpec value from byte value
 @[inline]
 fn new_ccs(v u8) !ChangeCipherSpec {
 	match v {

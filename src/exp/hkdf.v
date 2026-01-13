@@ -2,9 +2,9 @@ module tls13
 
 import encoding.binary
 
-const max_hkdf_label_length = 255
-const max_hkdf_context_length = 255
-const tls13_label_prefix = 'tls13 '
+const max_hkdflabel_size = 255
+const max_hkdfcontext_size = 255
+const label_prefix = 'tls13 '
 
 // This add support for HKDF-Expand-Label and other machinery for TLS 1.3
 // from RFC8446 Section 7.1 Key Schedule and others.
@@ -17,28 +17,31 @@ const tls13_label_prefix = 'tls13 '
 //
 @[noinit]
 struct HkdfLabel {
-	length      int    // uint16 length = Length;u16
-	tls13_label string // ascii string, "tls13 " + label
-	context     []u8   // < 255 len
+mut:
+	length  int    // uint16 length = Length;u16
+	label   string // ascii string, "tls13 " + label
+	context []u8   // < 255 len
 }
 
 // Length value
-fn (h HkdfLabel) hkdflabel_length() int {
+@[inline]
+fn (h HkdfLabel) label_size() int {
 	mut n := 0
 
 	n += 1
-	n += h.tls13_label.bytes().len
+	n += h.label.bytes().len
 	n += 1
 	n += h.context.len
 
 	return n
 }
 
+@[inline]
 fn (h HkdfLabel) packed_length() int {
 	mut n := 0
 	n += 2
 	n += 1
-	n += h.tls13_label.bytes().len
+	n += h.label.bytes().len
 	n += 1
 	n += h.context.len
 
@@ -47,11 +50,11 @@ fn (h HkdfLabel) packed_length() int {
 
 // new_hkdf_label creates new HkdfLabel, where label is label string without prefix
 fn new_hkdf_label(label string, context []u8, length int) !HkdfLabel {
-	combined_label := tls13_label_prefix + label
+	combined_label := label_prefix + label
 	hl := HkdfLabel{
-		length:      length
-		tls13_label: combined_label
-		context:     context
+		length:  length
+		label:   combined_label
+		context: context
 	}
 	hl.verify()!
 	return hl
@@ -59,14 +62,14 @@ fn new_hkdf_label(label string, context []u8, length int) !HkdfLabel {
 
 fn (hl HkdfLabel) verify() ! {
 	// label should an ascii string
-	if !hl.tls13_label.is_ascii() {
-		return error('HkdfLabel.tls13_label contains non-ascii string')
+	if !hl.label.is_ascii() {
+		return error('HkdfLabel.label contains non-ascii string')
 	}
 
-	if hl.tls13_label.len > max_hkdf_label_length {
-		return error('tls13_label.len exceed limit')
+	if hl.label.len > max_hkdflabel_size {
+		return error('label.len exceed limit')
 	}
-	if hl.context.len > max_hkdf_context_length {
+	if hl.context.len > max_hkdfcontext_size {
 		return error('hkdflabel context.len exceed limit')
 	}
 
@@ -85,9 +88,9 @@ fn (hl HkdfLabel) encode() ![]u8 {
 	out << ln
 
 	// writes label length
-	label_length := hl.tls13_label.len // should fit in one byte
+	label_length := hl.label.len // should fit in one byte
 	out << u8(label_length)
-	out << hl.tls13_label.bytes()
+	out << hl.label.bytes()
 
 	out << u8(hl.context.len)
 	out << hl.context
@@ -102,16 +105,16 @@ fn HkdfLabel.decode(b []u8) !HkdfLabel {
 	// one byte label length
 	label_len := r.read_byte()!
 	// read label contents
-	tls13_label := r.read_at_least(int(label_len))!
+	label := r.read_at_least(int(label_len))!
 	// one byte context len
 	ctx_len := r.read_byte()!
 	// read context bytes
 	ctx := r.read_at_least(int(ctx_len))!
 
 	hklabel := HkdfLabel{
-		length:      length
-		tls13_label: tls13_label.bytestr()
-		context:     ctx
+		length:  length
+		label:   label.bytestr()
+		context: ctx
 	}
 	return hklabel
 }
