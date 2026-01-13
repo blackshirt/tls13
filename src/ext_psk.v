@@ -124,13 +124,13 @@ type PskKeyExchangeModeList = []PskKeyExchangeMode
 // size_psxmode_list returns the size of array of PskKeyExchangeMode
 @[inline]
 fn size_psxmode_list(ks []PskKeyExchangeMode) int {
-	return size_u8list_withlen[PskKeyExchangeMode](ks, .size1)
+	return size_u8list[PskKeyExchangeMode](ks, .size1)
 }
 
 // pack_psxmode_list encodes array of PskKeyExchangeMode into bytes array
 @[direct_array_access; inline]
 fn pack_psxmode_list(ks []PskKeyExchangeMode) ![]u8 {
-	return pack_u8list_withlen[PskKeyExchangeMode](ks, .size1)!
+	return pack_u8list[PskKeyExchangeMode](ks, .size1)!
 }
 
 // parse_psxmode_list decodes bytes with 1-btye length
@@ -176,7 +176,7 @@ fn size_pskidentity(p PskIdentity) int {
 @[inline]
 fn pack_pskidentity(p PskIdentity) ![]u8 {
 	mut out := []u8{cap: size_pskidentity(p)}
-	out << pack_raw_withlen(p.identity, .size2)!
+	out << pack_raw(p.identity, .size2)!
 	mut obt := []u8{len: 4}
 	binary.big_endian_put_u32(mut obt, p.tktage)
 	out << obt
@@ -210,13 +210,13 @@ type PskIdentityList = []PskIdentity // <7..2^16-1>;
 // size_pskidentity_list returns the size of encoded ps included 2-bytes length
 @[direct_array_access; inline]
 fn size_pskidentity_list(ps []PskIdentity) int {
-	return size_objlist_withlen[PskIdentity](ps, size_pskidentity, .size2)
+	return size_objlist[PskIdentity](ps, size_pskidentity, .size2)
 }
 
 // pack_pskidentity_list encodes ps into bytes array, included 2-bytes length
 @[direct_array_access; inline]
 fn pack_pskidentity_list(ps []PskIdentity) ![]u8 {
-	return pack_objlist_withlen[PskIdentity](ps, pack_pskidentity, size_pskidentity, .size2)!
+	return pack_objlist[PskIdentity](ps, pack_pskidentity, size_pskidentity, .size2)!
 }
 
 // parse_pskidentities_nolen decodes bytes into array of PskIdentity without the length
@@ -290,13 +290,13 @@ type PskBinderEntryList = []PskBinderEntry // PskBinderEntry binders<33..2^16-1>
 // size_bdentry_list the size of encoded ps included 2-bytes length
 @[direct_array_access; inline]
 fn size_bdentry_list(ps []PskBinderEntry) int {
-	return size_objlist_withlen[PskBinderEntry](ps, size_bdentry, .size2)
+	return size_objlist[PskBinderEntry](ps, size_bdentry, .size2)
 }
 
 // pack_bdentry_list encodes ps into bytes array with 2-bytes length
 @[direct_array_access; inline]
 fn pack_bdentry_list(ps []PskBinderEntry) ![]u8 {
-	return pack_objlist_withlen[PskBinderEntry](ps, pack_bdentry, size_bdentry, .size2)!
+	return pack_objlist[PskBinderEntry](ps, pack_bdentry, size_bdentry, .size2)!
 }
 
 // parse_bdentries_nolen oarses bytes into array of PskBinderEntry directly, without the length part.

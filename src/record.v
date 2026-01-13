@@ -193,7 +193,7 @@ fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
 		return error('length exceed max_u16')
 	}
 	mut ad := []u8{cap: min_ciphertext_size}
-	ad << pack_u8item[ContentType](ctype)
+	ad << u8(ctype)
 	ad << pack_u16item[Version](ver)
 	ad << pack_u16item[int](length)
 
@@ -352,7 +352,7 @@ fn (p TlsInnerText) pack() ![]u8 {
 	mut out := []u8{cap: size}
 	// TODD: is it should add a content.len?
 	out << p.content
-	out << pack_u8item[ContentType](p.ctype)
+	out << u8(p.ctype)
 	out << p.zeros
 
 	return out
@@ -421,7 +421,7 @@ fn pack_ciphertext(c TlsCiphertext) ![]u8 {
 	mut out := []u8{cap: size_ciphertext(c)}
 	out << u8(c.otype)
 	out << pack_u16item[Version](c.version)
-	out << pack_raw_withlen(c.payload, .size2)!
+	out << pack_raw(c.payload, .size2)!
 
 	return out
 }

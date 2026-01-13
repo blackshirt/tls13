@@ -6,7 +6,7 @@ fn test_ciphersuites_decode_encode() ! {
 	// 00 08 13 02 13 03 13 01 00 ff
 	data := [u8(0x00), 0x08, 0x13, 0x02, 0x13, 0x03, 0x13, 0x01, 0x00, 0xff]
 
-	cs := parse_u16list_withlen[CipherSuite](data, new_csuite, .size2)!
+	cs := parse_u16list[CipherSuite](data, new_csuite, .size2)!
 	assert cs.len == 4
 	assert cs[0] == .tls_aes256gcm_sha384
 	assert cs[1] == .tls_chacha20poly1305_sha256
@@ -14,7 +14,7 @@ fn test_ciphersuites_decode_encode() ! {
 	assert cs[3] == .tls_emptyrenegotiationinfo_scsv
 
 	// encodes it back
-	cs_back := pack_u16list_withlen[CipherSuite](cs, .size2)!
+	cs_back := pack_u16list[CipherSuite](cs, .size2)!
 	assert cs_back == data
 }
 

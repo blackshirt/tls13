@@ -28,14 +28,14 @@ fn size_ext(r Extension) int {
 
 // the size of serialized extension list without the length
 @[direct_array_access; inline]
-fn size_extlist(xs []Extension) int {
-	return size_objlist[Extension](xs, size_ext)
+fn size_extlist_nolen(xs []Extension) int {
+	return size_objlist_nolen[Extension](xs, size_ext)
 }
 
 // the size of serialized extension list with n-bytes length
 @[direct_array_access; inline]
-fn size_extlist_withlen(xs []Extension, n SizeT) int {
-	return size_objlist_withlen[Extension](xs, size_ext, n)
+fn size_extlist(xs []Extension, n SizeT) int {
+	return size_objlist[Extension](xs, size_ext, n)
 }
 
 // pack_ext encodes Extension into bytes array
@@ -46,23 +46,23 @@ fn pack_ext(r Extension) ![]u8 {
 	out << pack_u16item[ExtensionType](r.tipe)
 
 	// serialize extension data, includes this data length as u16 value
-	out << pack_raw_withlen(r.data, .size2)!
+	out << pack_raw(r.data, .size2)!
 
 	// returns the output
 	return out
 }
 
-// pack_extlist encodes extension list xs into bytes array. Its dont encode the length.
-@[direct_array_access; inline]
-fn pack_extlist(xs []Extension) ![]u8 {
-	return pack_objlist[Extension](xs, pack_ext, size_ext)!
-}
-
-// pack_extlist_withlen encodes extension list xs into bytes array, includes the n-bytes length
+// pack_extlist encodes extension list xs into bytes array, includes the n-bytes length
 // specified in n parameter. Its commonly use u16-sized length, by specifying .size2 enum value.
 @[direct_array_access; inline]
-fn pack_extlist_withlen(xs []Extension, n SizeT) ![]u8 {
-	return pack_objlist_withlen[Extension](xs, pack_ext, size_ext, n)!
+fn pack_extlist(xs []Extension, n SizeT) ![]u8 {
+	return pack_objlist[Extension](xs, pack_ext, size_ext, n)!
+}
+
+// pack_extlist_nolen encodes extension list xs into bytes array. Its dont encode the length.
+@[direct_array_access; inline]
+fn pack_extlist_nolen(xs []Extension) ![]u8 {
+	return pack_objlist_nolen[Extension](xs, pack_ext, size_ext)!
 }
 
 // parse_ext decodes bytes array into Extension
@@ -204,7 +204,7 @@ fn size_svname(s ServerName) int {
 	n += 1 // for tipe
 	match s.tipe {
 		.host_name {
-			n += size_raw_withlen(s.name, .size2)
+			n += size_raw(s.name, .size2)
 		}
 		else {
 			panic('unsupported name type')
@@ -221,7 +221,7 @@ fn pack_svname(s ServerName) ![]u8 {
 	out << u8(s.tipe)
 	match s.tipe {
 		.host_name {
-			out << pack_raw_withlen(s.name, .size2)!
+			out << pack_raw(s.name, .size2)!
 		}
 		else {
 			return error('unsupported name type')
@@ -411,7 +411,7 @@ fn pack_spv(s SupportedVersions) ![]u8 {
 	match s.msg_type {
 		.client_hello {
 			// encodes with 1-byte length
-			out << pack_u16list_withlen[Version](s.verlist, .size1)!
+			out << pack_u16list[Version](s.verlist, .size1)!
 		}
 		.server_hello, .hello_retry_request {
 			out << pack_u16item[Version](s.verlist[0])
@@ -436,7 +436,7 @@ fn parse_spv(bytes []u8, msg_type HandshakeType) !SupportedVersions {
 			}
 			bol1 := r.read_u8()!
 			bol1_bytes := r.read_at_least(int(bol1))!
-			vers := parse_u16list[Version](bol1_bytes, new_version)!
+			vers := parse_u16list_nolen[Version](bol1_bytes, new_version)!
 			return SupportedVersions{
 				msg_type: msg_type
 				verlist:  vers
@@ -454,6 +454,16 @@ fn parse_spv(bytes []u8, msg_type HandshakeType) !SupportedVersions {
 		else {
 			return error('invalid msg_type for supported_versions')
 		}
+	}
+}
+
+// ext_from_spv creates supported_versions extension
+@[direct_array_access; inline]
+fn ext_from_spv(vs []Version, msg_type HandshakeType) !Extension {
+	spv := new_spv(msg_type, vs)!
+	return Extension{
+		tipe: .supported_versions
+		data: pack_spv(spv)!
 	}
 }
 
@@ -483,7 +493,7 @@ fn new_cookie(bytes []u8) !Cookie {
 fn ext_from_cookie(c Cookie) !Extension {
 	return Extension{
 		tipe: .cookie
-		data: pack_raw_withlen(c, .size2)!
+		data: pack_raw(c, .size2)!
 	}
 }
 
@@ -502,19 +512,19 @@ type SignatureSchemeList = []SignatureScheme
 // pack_sigscheme_list encodes array of SignatureScheme into bytes array with 2-bytes length
 @[direct_array_access; inline]
 fn pack_sigscheme_list(ss []SignatureScheme) ![]u8 {
-	return pack_u16list_withlen[SignatureScheme](ss, .size2)!
+	return pack_u16list[SignatureScheme](ss, .size2)!
 }
 
 // parse_sigcheme_list decodes bytes into array of SignatureScheme
 @[direct_array_access; inline]
 fn parse_sigcheme_list(bytes []u8) ![]SignatureScheme {
-	return parse_u16list_withlen[SignatureScheme](bytes, new_sigscheme, .size2)!
+	return parse_u16list[SignatureScheme](bytes, new_sigscheme, .size2)!
 }
 
 // ext_from_sigschemes creates .signature_algorithms extension type from arrays of SignatureScheme
 @[direct_array_access]
 fn ext_from_sigschemes(ss []SignatureScheme) !Extension {
-	xs_payload := pack_u16list_withlen[SignatureScheme](ss, .size2)!
+	xs_payload := pack_u16list[SignatureScheme](ss, .size2)!
 	return Extension{
 		tipe: .signature_algorithms
 		data: xs_payload
@@ -539,19 +549,19 @@ type NamedGroupList = []NamedGroup
 // pack_namegroup_list encodes array of NamedGroup into bytes array with 2-bytes length
 @[direct_array_access; inline]
 fn pack_namegroup_list(ns []NamedGroup) ![]u8 {
-	return pack_u16list_withlen[NamedGroup](ns, .size2)!
+	return pack_u16list[NamedGroup](ns, .size2)!
 }
 
 // parse_namegroup_list decodes bytes into array of NamedGroup
 @[direct_array_access; inline]
 fn parse_namegroup_list(bytes []u8) ![]NamedGroup {
-	return parse_u16list_withlen[NamedGroup](bytes, new_group, .size2)!
+	return parse_u16list[NamedGroup](bytes, new_group, .size2)!
 }
 
 // ext_from_namegroups creates .supported_groups extension type from array of NamedGroup
 @[direct_array_access]
 fn ext_from_namegroups(ns []NamedGroup) !Extension {
-	ns_payload := pack_u16list_withlen[NamedGroup](ns, .size2)!
+	ns_payload := pack_u16list[NamedGroup](ns, .size2)!
 	return Extension{
 		tipe: .supported_groups
 		data: ns_payload

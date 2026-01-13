@@ -142,7 +142,7 @@ fn new_ksentry(g NamedGroup, data []u8) !KeyShareEntry {
 // size_ksentry returns the size of serialized KeyShareEntry k, in bytes.
 @[inline]
 fn size_ksentry(k KeyShareEntry) int {
-	return 2 + size_raw_withlen(k.ksdata, .size2)
+	return 2 + size_raw(k.ksdata, .size2)
 }
 
 // pack_ksentry encodes KeyShareEntry k into bytes array
@@ -150,20 +150,20 @@ fn size_ksentry(k KeyShareEntry) int {
 fn pack_ksentry(k KeyShareEntry) ![]u8 {
 	mut out := []u8{cap: size_ksentry(k)}
 	out << pack_u16item[NamedGroup](k.group)
-	out << pack_raw_withlen(k.ksdata, .size2)!
+	out << pack_raw(k.ksdata, .size2)!
 	return out
 }
 
 // pack_ksentries encodes array of KeyShareEntry into bytes array with 2-bytes length
 @[direct_array_access; inline]
 fn pack_ksentries(ks []KeyShareEntry) ![]u8 {
-	return pack_objlist_withlen[KeyShareEntry](ks, pack_ksentry, size_ksentry, .size2)!
+	return pack_objlist[KeyShareEntry](ks, pack_ksentry, size_ksentry, .size2)!
 }
 
 // pack_ksentries_nolen encodes array of KeyShareEntry into bytes array, without the length
 @[direct_array_access; inline]
 fn pack_ksentries_nolen(ks []KeyShareEntry) ![]u8 {
-	return pack_objlist[KeyShareEntry](ks, pack_ksentry, size_ksentry)!
+	return pack_objlist_nolen[KeyShareEntry](ks, pack_ksentry, size_ksentry)!
 }
 
 // parse_ksentry decodes bytes b into KeyShareEntry

@@ -299,6 +299,23 @@ fn (ad Description) str() string {
 	}
 }
 
+// TLS 1.3 Alert messages
+//
+@[noinit]
+struct Alert {
+mut:
+	level Level
+	desc  Description
+}
+
+@[inline]
+fn new_alert(lv Level, desc Description) Alert {
+	return Alert{
+		level: lv
+		desc:  desc
+	}
+}
+
 // NameType = u8 for ServerName extension
 enum NameType as u8 {
 	host_name    = 0x00

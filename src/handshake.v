@@ -77,7 +77,7 @@ fn pack_hsk(h Handshake) ![]u8 {
 	mut out := []u8{cap: size_hsk(h)}
 
 	out << u8(h.tipe)
-	out << pack_raw_withlen(h.payload, .size3)!
+	out << pack_raw(h.payload, .size3)!
 
 	return out
 }
@@ -116,28 +116,28 @@ fn (hs []Handshake) filtered_hsk_with_type(msgtype HandshakeType) []Handshake {
 // HandshakeList is arrays of handshake messages
 type HandshakeList = []Handshake
 
-// the size of encoded handshake list
-@[direct_array_access; inline]
-fn size_hsklist(hs []Handshake) int {
-	return size_objlist[Handshake](hs, size_hsk)
-}
-
 // the size of encoded handshake list with n-bytes length
 @[direct_array_access; inline]
-fn size_hsklist_withlen(hs []Handshake, n SizeT) int {
-	return size_objlist_withlen[Handshake](hs, size_hsk, n)
+fn size_hsklist(hs []Handshake, n SizeT) int {
+	return size_objlist[Handshake](hs, size_hsk, n)
 }
 
-// encodes handshake list
-@[direct_array_access]
-fn pack_hsklist(hs []Handshake) ![]u8 {
-	return pack_objlist[Handshake](hs, pack_hsk, size_hsk)!
+// the size of encoded handshake list
+@[direct_array_access; inline]
+fn size_hsklist_nolen(hs []Handshake) int {
+	return size_objlist_nolen[Handshake](hs, size_hsk)
 }
 
 // encodes handshake list with n-bytes length
 @[direct_array_access; inline]
-fn pack_hsklist_withlen(hs []Handshake, n SizeT) ![]u8 {
-	return pack_objlist_withlen[Handshake](hs, pack_hsk, size_hsk, n)!
+fn pack_hsklist(hs []Handshake, n SizeT) ![]u8 {
+	return pack_objlist[Handshake](hs, pack_hsk, size_hsk, n)!
+}
+
+// encodes handshake list
+@[direct_array_access]
+fn pack_hsklist_nolen(hs []Handshake) ![]u8 {
+	return pack_objlist_nolen[Handshake](hs, pack_hsk, size_hsk)!
 }
 
 // Supported TLS 1.3 handshake payload
@@ -210,7 +210,7 @@ fn pack_hskpayload(h HskPayload) ![]u8 {
 		KeyUpdate {
 			ku := h as KeyUpdate
 			// keyupdate was single byte
-			return pack_u8item(ku)
+			return [u8(ku)]
 		}
 		ServerHello {
 			sh := h as ServerHello
@@ -285,13 +285,13 @@ fn size_chello(c ClientHello) int {
 	n += 1 + c.sessid.len
 
 	// Arrays of ciphersuite was prepended by 2-bytes length
-	n += size_u16list_withlen[CipherSuite](c.csuites, .size2)
+	n += size_u16list[CipherSuite](c.csuites, .size2)
 
 	// compression_method values plus 1-byte length
 	n += 1 + c.cmeths.len
 
 	// extension list with prepended 2-bytes length
-	n += size_extlist_withlen(c.xslist, .size2)
+	n += size_extlist(c.xslist, .size2)
 
 	return n
 }
@@ -310,16 +310,16 @@ fn pack_chello(c ClientHello) ![]u8 {
 	out << c.random
 
 	// encodes sessid, with 1-byte length
-	out << pack_raw_withlen(c.sessid, .size1)!
+	out << pack_raw(c.sessid, .size1)!
 
 	// encodes CipherSuite arrays, with 2-bytes length.
-	out << pack_u16list_withlen[CipherSuite](c.csuites, .size2)!
+	out << pack_u16list[CipherSuite](c.csuites, .size2)!
 
 	// encodes compression method array with 1-byte length
-	out << pack_raw_withlen(c.cmeths, .size1)!
+	out << pack_raw(c.cmeths, .size1)!
 
 	// encodes extension list with 2-bytes length
-	out << pack_extlist_withlen(c.xslist, .size2)!
+	out << pack_extlist(c.xslist, .size2)!
 
 	return out
 }
@@ -345,7 +345,7 @@ fn parse_chello(bytes []u8) !ClientHello {
 	// read cipher suites list with prepended 2-bytes length
 	ciphers_len := r.read_u16()!
 	ciphers_data := r.read_at_least(int(ciphers_len))!
-	csuites := parse_u16list[CipherSuite](ciphers_data, new_csuite)!
+	csuites := parse_u16list_nolen[CipherSuite](ciphers_data, new_csuite)!
 
 	// read 1-btye of compression method length and the contents of compression method bytes
 	cm := r.read_u8()!
@@ -447,7 +447,7 @@ fn size_shello(s ServerHello) int {
 	// 1-byte compression_method
 	n += 1
 	// extension list with prepended 2-bytes length
-	n += size_extlist_withlen(s.xslist, .size2)
+	n += size_extlist(s.xslist, .size2)
 
 	return n
 }
@@ -465,7 +465,7 @@ fn pack_shello(s ServerHello) ![]u8 {
 	out << s.random
 
 	// encodes sessid, prepended with 1-byte length
-	out << pack_raw_withlen(s.sessid, .size1)!
+	out << pack_raw(s.sessid, .size1)!
 
 	// encodes choosen CipherSuite, its an u16-based value
 	out << pack_u16item[CipherSuite](s.csuite)
@@ -475,7 +475,7 @@ fn pack_shello(s ServerHello) ![]u8 {
 
 	// encodes extension list prepended with 2-bytes length,
 	// with callback extension packer and extension size getter
-	out << pack_extlist_withlen(s.xslist, .size2)!
+	out << pack_extlist(s.xslist, .size2)!
 
 	return out
 }
@@ -565,7 +565,7 @@ type EncryptedExtensions = []Extension // <0..2^16-1>
 // pack_ee encodes EncryptedExtensions into bytes array
 @[inline]
 fn pack_ee(ee EncryptedExtensions) ![]u8 {
-	return pack_extlist_withlen(ee, .size2)!
+	return pack_extlist(ee, .size2)!
 }
 
 // parse_ee decodes bytes into EncryptedExtensions
@@ -604,7 +604,7 @@ fn (cr CertificateRequest) check_creq() ! {
 fn size_creq(cr CertificateRequest) int {
 	mut n := 0
 	n += 1 + cr.opaque.len
-	n += size_extlist_withlen(cr.xslist, .size2)
+	n += size_extlist(cr.xslist, .size2)
 	return n
 }
 
@@ -615,10 +615,10 @@ fn pack_creq(cr CertificateRequest) ![]u8 {
 	mut out := []u8{cap: size_creq(cr)}
 
 	// encodes certificate request context opaque and their 1-byte length
-	out << pack_raw_withlen(cr.opaque, .size1)!
+	out << pack_raw(cr.opaque, .size1)!
 
 	// encodes certificate request extension list with 2-bytes length
-	out << pack_extlist_withlen(cr.xslist, .size2)!
+	out << pack_extlist(cr.xslist, .size2)!
 
 	return out
 }
@@ -710,7 +710,7 @@ fn (ce CertificateEntry) check_ce() ! {
 fn size_centry(ce CertificateEntry) int {
 	mut n := 0
 	n += 3 + ce.opaque.len
-	n += size_extlist_withlen(ce.xslist, .size2)
+	n += size_extlist(ce.xslist, .size2)
 	return n
 }
 
@@ -724,10 +724,10 @@ fn pack_centry(ce CertificateEntry) ![]u8 {
 		return error('Certificate data exceed')
 	}
 	// encodes certificate data with 3-bytes length
-	out << pack_raw_withlen(ce.opaque, .size3)!
+	out << pack_raw(ce.opaque, .size3)!
 
 	// encodes certificate extension list with 2-bytes length
-	out << pack_extlist_withlen(ce.xslist, .size2)!
+	out << pack_extlist(ce.xslist, .size2)!
 
 	return out
 }
@@ -762,9 +762,9 @@ fn parse_centry(b []u8) !CertificateEntry {
 // CertificateEntry list certificate_list<0..2^24-1>;
 //
 
-// parse_celist decodes bytes array into array of CertificateEntry without the length part.
+// parse_celist_nolen decodes bytes array into array of CertificateEntry without the length part.
 @[direct_array_access; inline]
-fn parse_celist(bytes []u8) ![]CertificateEntry {
+fn parse_celist_nolen(bytes []u8) ![]CertificateEntry {
 	mut i := 0
 	mut cs := []CertificateEntry{cap: bytes.len / min_centry_size}
 	for i < bytes.len {
@@ -775,9 +775,9 @@ fn parse_celist(bytes []u8) ![]CertificateEntry {
 	return cs
 }
 
-// parse_celist_withlen decodes bytes array into arrays of CertificateEntry includes the 3-bytes length.
+// parse_celist decodes bytes array into arrays of CertificateEntry includes the 3-bytes length.
 @[direct_array_access; inline]
-fn parse_celist_withlen(bytes []u8) ![]CertificateEntry {
+fn parse_celist(bytes []u8) ![]CertificateEntry {
 	if bytes.len < 3 {
 		return error('underflow bytes for celist')
 	}
@@ -789,7 +789,7 @@ fn parse_celist_withlen(bytes []u8) ![]CertificateEntry {
 	arrays_data := r.read_at_least(int(arrays_len.value))!
 
 	// parse this array data into array of CertificateEntry
-	cs := parse_celist(arrays_data)!
+	cs := parse_celist_nolen(arrays_data)!
 
 	return cs
 }
@@ -819,7 +819,7 @@ fn (c Certificate) check_cert() ! {
 	if c.context.len > max_u8 {
 		return error('certificate context length exceed max_u8')
 	}
-	if size_objlist[CertificateEntry](c.celist, size_centry) > max_u24 {
+	if size_objlist_nolen[CertificateEntry](c.celist, size_centry) > max_u24 {
 		return error('celist size exceed max_u24')
 	}
 }
@@ -829,7 +829,7 @@ fn (c Certificate) check_cert() ! {
 fn size_cert(c Certificate) int {
 	mut n := 0
 	n += 1 + c.context.len
-	n += size_objlist_withlen[CertificateEntry](c.celist, size_centry, .size3)
+	n += size_objlist[CertificateEntry](c.celist, size_centry, .size3)
 	return n
 }
 
@@ -840,11 +840,10 @@ fn pack_cert(c Certificate) ![]u8 {
 	mut out := []u8{cap: size_cert(c)}
 
 	// encodes 1-byte context.len and the context
-	out << pack_raw_withlen(c.context, .size1)!
+	out << pack_raw(c.context, .size1)!
 
 	// encodes certificate list with 3-bytes length
-	out << pack_objlist_withlen[CertificateEntry](c.celist, pack_centry, size_centry,
-		.size3)!
+	out << pack_objlist[CertificateEntry](c.celist, pack_centry, size_centry, .size3)!
 
 	return out
 }
@@ -866,7 +865,7 @@ fn parse_cert(bytes []u8) !Certificate {
 
 	// parse certificate entries payload
 	celist_data := r.read_at_least(int(length.value))!
-	celist := parse_celist(celist_data)!
+	celist := parse_celist_nolen(celist_data)!
 
 	cert := Certificate{
 		context: context
@@ -919,7 +918,7 @@ fn pack_certverify(cv CertificateVerify) ![]u8 {
 	out << pack_u16item[SignatureScheme](cv.algorithm)
 
 	// encodes signature bytes with 2-bytes length
-	out << pack_raw_withlen(cv.signature, .size2)!
+	out << pack_raw(cv.signature, .size2)!
 
 	return out
 }
@@ -1002,7 +1001,7 @@ fn size_nst(st NewSessionTicket) int {
 	n += st.ticket.len
 
 	// extension list with 2-bytes length
-	n += size_extlist_withlen(st.xslist, .size2)
+	n += size_extlist(st.xslist, .size2)
 
 	return n
 }
@@ -1026,13 +1025,13 @@ fn pack_nst(st NewSessionTicket) ![]u8 {
 	out << plus2
 
 	// encodes nst nonce with 1-byte length
-	out << pack_raw_withlen(st.nonce, .size1)!
+	out << pack_raw(st.nonce, .size1)!
 
 	// encodes nst ticket with 2-bytes length
-	out << pack_raw_withlen(st.ticket, .size2)!
+	out << pack_raw(st.ticket, .size2)!
 
 	// encodes extension list with 2-bytes length
-	out << pack_extlist_withlen(st.xslist, .size2)!
+	out << pack_extlist(st.xslist, .size2)!
 
 	return out
 }
