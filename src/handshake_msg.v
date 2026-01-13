@@ -429,7 +429,9 @@ mut:
 
 @[inline]
 fn (s ServerHello) check_shello() ! {
-	return error('TODO')
+	if s.sessid.len > max_sessid_size {
+		return error('wrong sessid size')
+	}
 }
 
 // size_shello return the length of serialized single item of ServerHello s

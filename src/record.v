@@ -258,9 +258,9 @@ fn size_record(r TlsRecord) int {
 	return min_record_size + r.fragment.len
 }
 
-// pack_record encodes record r into bytes array
+// pack_rec encodes record r into bytes array
 @[inline]
-fn pack_record(r TlsRecord) ![]u8 {
+fn pack_rec(r TlsRecord) ![]u8 {
 	mut out := []u8{cap: size_record(r)}
 
 	out << u8(r.ctype)
@@ -271,6 +271,7 @@ fn pack_record(r TlsRecord) ![]u8 {
 	return out
 }
 
+// parse_rec decodes bytes into raw TlsRecord
 @[direct_array_access; inline]
 fn parse_rec(bytes []u8) !TlsRecord {
 	if bytes.len < min_record_size {
