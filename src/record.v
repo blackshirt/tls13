@@ -8,18 +8,14 @@ import rand
 import encoding.binary
 import x.crypto.chacha20poly1305
 
-// AEAD encrypter
+// TLS 1.3 AEAD encrypter (decrypter)
 interface AeadEncrypter {
 	encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8
 	decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8
 }
 
 // Default chacha20poly1305 AEAD encrypter
-@[noini]
-struct DefaultAead {
-mut:
-	c CipherSuite = .tls_chacha20poly1305_sha256
-}
+struct DefaultAead {}
 
 // new_default creates a new default chacha20poly1305 AEAD encrypter
 @[inline]
@@ -27,15 +23,17 @@ fn new_default() &AeadEncrypter {
 	return &DefaultAead{}
 }
 
+// encrypt encrypts this plaintext with provided params using chacha20poly1305 aead.
 fn (d DefaultAead) encrypt(plaintext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 	return chacha20poly1305.encrypt(plaintext, key, nonce, ad)!
 }
 
+// decrypt performs decryption on ciphertext and validates output result based on the provided params using chacha20poly1305 aead.
 fn (d DefaultAead) decrypt(ciphertext []u8, key []u8, nonce []u8, ad []u8) ![]u8 {
 	return chacha20poly1305.decrypt(ciphertext, key, nonce, ad)!
 }
 
-// RContext is a record protection layer
+// RContext is a TLS 1.3 record protection (deprotection) layer
 //
 @[noinit]
 struct RContext {
@@ -85,7 +83,7 @@ fn (mut r RContext) set_pmode(pm PaddingMode) {
 // to .application_data and version to TLS 1.2
 @[direct_array_access]
 fn (mut r RContext) encrypt(rec TlsRecord, wkey []u8, wiv []u8) !TlsCiphertext {
-	return r.encrypt_internal(rec, wkey, wiv, .application_data, .v12)!
+	return r.encrypt_internal(rec, wkey, wiv, .application_data, .tls12)!
 }
 
 // encrypt_internal treats a TlsRecord rec as a plaintext record and does protection mechanism by encrypting them
@@ -116,7 +114,7 @@ fn (mut r RContext) encrypt_internal(rec TlsRecord, wkey []u8, wiv []u8, tp Cont
 
 	return TlsCiphertext{
 		otype:   .application_data
-		version: .v12
+		version: .tls12
 		payload: encrypted_text
 	}
 }
@@ -129,20 +127,15 @@ fn (mut r RContext) decrypt(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
 	// make a read nonce from the current read sequence number and peer_read_iv riv
 	rnonce := make_rnonce(riv, r.crseq, nonce_size(r.c))
 
-	// As a note, TLSCiphertext.payload field is containing ciphertext output of `.encrypt()`
-	// operation plus appended with mac parts, so we split it to feed into decryption step.
-	idx := c.payload.len - tag_size(r.c)
-	ciphertext := c.payload[0..idx]
-	mac := c.payload[idx..]
-	assert mac.len == tag_size(r.c)
-
-	output := r.aead.decrypt(ciphertext, rkey, rnonce, ad_data)!
+	// As a note, TlsCiphertext.payload field is containing encrypted text plus authentication
+	// tag performed on previous encryption phase.
+	output := r.aead.decrypt(c.payload, rkey, rnonce, ad_data)!
 	inner := parse_innertext(output)!
 
 	rec := TlsRecord{
 		ctype: inner.ctype
-		// should
-		version:  .v12
+		// should be another version ?
+		version:  .tls12
 		fragment: inner.content
 	}
 	// increases read sequence number
@@ -168,6 +161,7 @@ fn (mut r RContext) decrypt_rec(rec TlsRecord, rkey []u8, riv []u8) !TlsRecord {
 @[inline]
 fn (mut r RContext) inc_wseq() {
 	r.cwseq += 1
+	// check for wraps
 	if r.cwseq == 0 {
 		panic('u64bit wirte sequence has overflow')
 	}
@@ -186,7 +180,7 @@ fn (mut r RContext) inc_rseq() {
 //
 
 // make_adata builds an additional data, where additional_data
-//		= TLSCiphertext.otype || TLSCiphertext.legacy_record_version || TLSCiphertext.length
+//		= TlsCiphertext.otype || TlsCiphertext.legacy_record_version || TlsCiphertext.length
 @[inline]
 fn make_adata(ctype ContentType, ver Version, length int) ![]u8 {
 	if length > max_u16 {
@@ -244,7 +238,7 @@ mut:
 	// or .application_data if this was ciphertext record.
 	ctype ContentType
 	// The legacy_record_version field is always 0x0303
-	version Version = .v12
+	version Version = .tls12
 	// Should this length to be relaxed, so its can handle fragmented record ?
 	// the fragment length for plaintext record was limited under 1 << 14 bytes
 	// when this record is an encrypted record, the size fragment payload was increased
@@ -308,7 +302,7 @@ fn (r TlsRecord) expect_type(tp ContentType) bool {
 // set_version sets the record version
 @[inline]
 fn (mut r TlsRecord) set_version(ver Version) ! {
-	if ver !in [.v13, .v12, .v11] {
+	if ver !in [.tls13, .tls12, .tls11] {
 		return error('version not supported')
 	}
 	if r.version == ver {
@@ -390,7 +384,7 @@ fn (p TlsInnerText) pack() ![]u8 {
 @[direct_array_access; inline]
 fn parse_innertext(b []u8) !TlsInnerText {
 	// get non-null bytes position from the bytes b and error if its not found
-	pos := find_ctntype_offset(b)
+	pos := find_ctype_offset(b)
 	if pos < 0 {
 		err_from_offset(pos)!
 	}
@@ -426,7 +420,7 @@ mut:
 	// opaque type
 	otype ContentType = .application_data
 	// legacy version
-	version Version = .v12
+	version Version = .tls12
 	// The payload length was the sum of the lengths of the content and the padding,
 	// plus one for the inner content type, plus any expansion added by the AEAD algorithm.
 	// The length  MUST NOT exceed 2^14 + 256 bytes
@@ -464,7 +458,7 @@ fn parse_ciphertext(bytes []u8) !TlsCiphertext {
 	// Get opaque type
 	opq := r.read_u8()!
 	otype := new_ctntype(opq)!
-	// The outer otype field of a TLSCiphertext record is always set to the value 23 (application_data)
+	// The outer otype field of a TlsCiphertext record is always set to the value 23 (application_data)
 	// for outward compatibility with middleboxes accustomed to parsing previous versions of TLS.
 	if otype != .application_data {
 		return error('Bad TlsCiphertext ContentType')
@@ -498,7 +492,7 @@ fn is_zero(seed []u8) bool {
 	return acc == 0
 }
 
-// error constants return values for find_ctntype_offset
+// error constants return values for find_ctype_offset
 //
 const err_invalid_length = -1
 const err_exceed_limit = -2
@@ -517,10 +511,10 @@ fn err_from_offset(n int) ! {
 	}
 }
 
-// find_ctntype_offset find first non null byte start from the last position.
+// find_ctype_offset find first non null byte start from the last position.
 // Its return positive position in the bytes arrays or negative number for an error.
 @[direct_array_access; inline]
-fn find_ctntype_offset(b []u8) int {
+fn find_ctype_offset(b []u8) int {
 	// this check makes sure b is a valid bytes
 	if b.len < 1 {
 		return err_invalid_length

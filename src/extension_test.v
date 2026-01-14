@@ -31,7 +31,7 @@ fn test_extensionlist_encode_decode_from_serverhello() ! {
 	assert exts[0].tipe == .supported_versions
 	assert exts[0].data.len == 2
 	ver := parse_u16item[Version](exts[0].data, new_version)!
-	assert ver == .v13
+	assert ver == .tls13
 
 	// Second extension
 	//
@@ -75,7 +75,7 @@ fn test_supportedversionsextension_encode_decode_from_clienthello() ! {
 	// here, cvl is client supported versions
 	assert cvl.msg_type == .client_hello
 	assert cvl.verlist.len == 1
-	assert cvl.verlist[0] == .v13
+	assert cvl.verlist[0] == .tls13
 
 	// encodes back the client supported version list
 	cvl_back := pack_spv(cvl)!
@@ -102,7 +102,7 @@ fn test_supportedversionsextension_encode_decode_from_serverhello() ! {
 	// parse
 	ssv := parse_spv(ext.data, .server_hello)!
 	assert ssv.verlist.len == 1
-	assert ssv.verlist[0] == .v13
+	assert ssv.verlist[0] == .tls13
 
 	// pack'ing it back into Extension bytes
 	// encodes back the client supported version list

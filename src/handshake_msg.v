@@ -239,7 +239,7 @@ const max_chello_cmeths_size = max_u8
 @[noinit]
 struct ClientHello {
 mut:
-	version Version = .v12
+	version Version = .tls12
 	// 32-bytes of random bytes
 	random []u8
 	// legacy session id, <0..32> length
@@ -417,7 +417,7 @@ const min_shello_size = 40
 @[noinit]
 struct ServerHello {
 mut:
-	version Version = .v12
+	version Version = .tls12
 	random  []u8
 	sessid  []u8 // <0..32>;
 	// choosen ciphersuite

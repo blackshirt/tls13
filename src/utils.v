@@ -7,10 +7,10 @@ module tls13
 
 import encoding.binary
 
-// SizeT is an enum tells the size of bytes needed to encode an object,
+// SizeT is an enum that referst to the size of bytes needed to encode an object,
 // to be prepended on the output.
 enum SizeT {
-	size0 = 0 // left untouched
+	size0 = 0 // without bytes length and left untouched
 	size1 = 1 // prepended with 1-byte length
 	size2 = 2 // prepended with 2-bytes length
 	size3 = 3 // prepended with 3-bytes length
@@ -27,8 +27,7 @@ fn pack_u8item[T](t T) []u8 {
 	return [u8(t)]
 }
 
-// pack_u8list encodes array of u8-sized opaque in ts into bytes array
-// prepended with the length specified in n.
+// pack_u8list encodes array of u8-sized opaque in ts into bytes array prepended with the length specified in n.
 @[direct_array_access]
 fn pack_u8list[T](ts []T, n SizeT) ![]u8 {
 	// for this type of item, the size commonly only limited to max_u8 size,
@@ -73,7 +72,7 @@ fn pack_u8list_nolen[T](ts []T) []u8 {
 // size_u8list gets the capacities needed with specified n-bytes length for ts.
 @[direct_array_access; inline]
 fn size_u8list[T](ts []T, n SizeT) int {
-	return ts.len + int(n)
+	return int(n) + ts.len
 }
 
 // 2. Helpers for u16-sized opaque.
@@ -268,7 +267,7 @@ fn pack_raw(r []u8, n SizeT) ![]u8 {
 // size_raw tells the capacities needed to serialize r prepended with n-bytes length.
 @[inline]
 fn size_raw(r []u8, n SizeT) int {
-	return r.len + int(n)
+	return int(n) + r.len
 }
 
 // 4. Helpers for another arbitrary object
@@ -281,7 +280,7 @@ fn size_raw(r []u8, n SizeT) int {
 @[direct_array_access; inline]
 fn size_objlist[T](ts []T, cb_objsize fn (T) int, n SizeT) int {
 	// return n-bytes + size the object list without length
-	return size_objlist_nolen[T](ts, cb_objsize) + int(n)
+	return int(n) + size_objlist_nolen[T](ts, cb_objsize)
 }
 
 // size_objlist_nolen returns the size of serialized ts object array, with callback to get size
