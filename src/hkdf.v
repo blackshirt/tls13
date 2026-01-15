@@ -1,10 +1,33 @@
 module tls13
 
+import crypto
 import encoding.binary
+import hkdf
 
 const max_hkdflabel_size = 255
 const max_hkdfcontext_size = 255
 const label_prefix = 'tls13 '
+
+// HKDF-Expand-Label(Secret, Label, Context, Length) =
+//            HKDF-Expand(Secret, HkdfLabel, Length)
+//
+//     Where HkdfLabel is specified as:
+//
+//     struct {
+//         uint16 length = Length;
+//           opaque label<7..255> = "tls13 " + Label;
+//         opaque context<0..255> = Context;
+//     } HkdfLabel;
+//
+//     Derive-Secret(Secret, Label, Messages) =
+//          HKDF-Expand-Label(Secret, Label, Transcript-Hash(Messages), Hash.length)
+//
+@[direct_array_access]
+fn hkdf_expand_label(h crypto.Hash, secret []u8, label string, context []u8, length int) ![]u8 {
+	klabel := new_hklabel(label, context, length)!
+	info := klabel.encode()!
+	return hkdf.expand(h, secret, info, length)!
+}
 
 // This add support for HKDF-Expand-Label and other machinery for TLS 1.3
 // from RFC8446 Section 7.1 Key Schedule and others.
@@ -27,29 +50,20 @@ mut:
 @[inline]
 fn (h HkdfLabel) label_size() int {
 	mut n := 0
-
-	n += 1
-	n += h.label.bytes().len
-	n += 1
-	n += h.context.len
-
+	n += 1 + h.label.bytes().len
+	n += 1 + h.context.len
 	return n
 }
 
+// encoded size
 @[inline]
 fn (h HkdfLabel) packed_length() int {
-	mut n := 0
-	n += 2
-	n += 1
-	n += h.label.bytes().len
-	n += 1
-	n += h.context.len
-
-	return n
+	return 2 + h.label_size()
 }
 
-// new_hkdf_label creates new HkdfLabel, where label is label string without prefix
-fn new_hkdf_label(label string, context []u8, length int) !HkdfLabel {
+// new_hklabel creates new HkdfLabel, where label is label string without prefix
+@[direct_array_access; inline]
+fn new_hklabel(label string, context []u8, length int) !HkdfLabel {
 	combined_label := label_prefix + label
 	hl := HkdfLabel{
 		length:  length
@@ -60,6 +74,7 @@ fn new_hkdf_label(label string, context []u8, length int) !HkdfLabel {
 	return hl
 }
 
+@[inline]
 fn (hl HkdfLabel) verify() ! {
 	// label should an ascii string
 	if !hl.label.is_ascii() {
@@ -78,28 +93,21 @@ fn (hl HkdfLabel) verify() ! {
 	}
 }
 
+@[inline]
 fn (hl HkdfLabel) encode() ![]u8 {
 	hl.verify()!
-	mut out := []u8{}
+	mut out := []u8{cap: hl.packed_length()}
 
-	// writes hkdf length
-	mut ln := []u8{len: 2}
-	binary.big_endian_put_u16(mut ln, u16(hl.length))
-	out << ln
-
-	// writes label length
-	label_length := hl.label.len // should fit in one byte
-	out << u8(label_length)
-	out << hl.label.bytes()
-
-	out << u8(hl.context.len)
-	out << hl.context
+	out << pack_u16item[int](hl.length)
+	out << pack_raw(hl.label.bytes(), .size1)!
+	out << pack_raw(hl.context, .size1)!
 
 	return out
 }
 
-fn HkdfLabel.decode(b []u8) !HkdfLabel {
-	mut r := Buffer.new(b)!
+@[direct_array_access]
+fn decode_hklabel(b []u8) !HkdfLabel {
+	mut r := new_buffer(b)!
 	// read two bytes length
 	length := r.read_u16()!
 	// one byte label length
