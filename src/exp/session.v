@@ -12,8 +12,10 @@ const max_session_ticket = 1
 @[params]
 pub struct Options {
 	group  NamedGroup  = .x25519
-	csuite CipherSuite = .tls_chacha20_poly1305_sha256
-	rto    i64         = 2 * time.second // net.tcp_default_read_timeout = 30 seconds
+	csuite     CipherSuite = .tls_chacha20_poly1305_sha256
+	server_name string
+	compat     bool
+	rto        i64         = 2 * time.second // net.tcp_default_read_timeout = 30 seconds
 	wto    i64         = 2 * time.second // net.tcp_default_write_timeout = 30 seconds
 }
 
@@ -63,6 +65,7 @@ mut:
 	rcv_srv_certreq bool
 	// Compatibility support, in plan
 	compat_support bool
+	server_name    string
 }
 
 // new_session creates new session from already connected tcp connection
@@ -86,6 +89,8 @@ pub fn new_session(mut conn net.TcpConn, opt Options) !&Session {
 
 	ses.group = opt.group
 	ses.csuite = opt.csuite
+	ses.server_name = opt.server_name
+	ses.compat_support = opt.compat
 	ses.wto = opt.wto
 	ses.rto = opt.rto
 
@@ -98,6 +103,20 @@ pub fn new_session(mut conn net.TcpConn, opt Options) !&Session {
 	ses.reader = reader
 
 	return ses
+}
+
+
+// dial connects to address, performs a TLS 1.3 handshake, and returns an established Session.
+pub fn dial(address string, opt Options) !&Session {
+	mut conn := net.dial_tcp(address)!
+	mut ses := new_session(mut conn, opt)!
+	ses.do_full_handshake()!
+	return ses
+}
+
+// connected reports whether the TLS handshake has completed and application data can be exchanged.
+pub fn (ses Session) connected() bool {
+	return ses.hsk_completed && ses.hsk_connected && ses.tls_state() == .ts_application_data
 }
 
 fn (ses Session) peer_address() !(string, u16) {
