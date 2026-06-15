@@ -78,7 +78,9 @@ pub fn (mut ses Session) do_full_handshake() ! {
 				}
 				cert := Certificate{}
 				ses.send_client_certificate_msg(cert)!
-				ses.change_tls_state(.ts_client_certificate_verify)
+				// No client certificate material is configured, so an empty Certificate
+				// message completes client authentication and CertificateVerify is omitted.
+				ses.change_tls_state(.ts_client_finished)
 			}
 			// Waiting for a message from the server?
 			.ts_server_hello, .ts_server_hello_2, .ts_encrypted_extensions,
@@ -109,7 +111,7 @@ pub fn (mut ses Session) do_full_handshake() ! {
 				ses.change_tls_state(.ts_connected)
 			}
 			.ts_key_update {
-				ku := KeyUpdate{}
+				ku := KeyUpdate.not_requested
 				ses.send_key_update(ku)!
 				// After sending a KeyUpdate message, the sender shall send all its
 				// traffic using the next generation of keys
@@ -204,12 +206,20 @@ fn (mut ses Session) parse_post_msg(pxt TLSPlaintext) ! {
 				// Two messages maybe sent by server after handshake was completed
 				// ie, KeyUpdate and NewSessionTicket message
 				.key_update {
-					// TODO: checks and validates key_update msg
-					ku := KeyUpdate.unpack(hsk.payload)!
+					ses.require_tls_state([.ts_application_data], 'key_update')!
+					if hsk.payload.len != 1 {
+						return error('decode_error: invalid KeyUpdate length')
+					}
+					ku := new_keyupdate(hsk.payload[0])!
 					ses.parse_key_update(ku)!
-					// other todo
+					ses.update_server_application_traffic_secret()!
+					if ku == .was_requested {
+						ses.send_key_update(.not_requested)!
+						ses.update_client_application_traffic_secret()!
+					}
 				}
 				.new_session_ticket {
+					ses.require_tls_state([.ts_application_data], 'new_session_ticket')!
 					// TODO: validates ticket
 					nst := NewSessionTicket.unpack(hsk.payload)!
 					ses.tickets << nst
@@ -279,6 +289,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 	log.info('${@FN}..${hsk.msg_type}')
 	match hsk.msg_type {
 		.hello_retry_request {
+			ses.require_tls_state([.ts_server_hello, .ts_server_hello_2], 'hello_retry_request')!
 			// if we have receive HelloRetryRequest before this, we should abort
 			// the connection, we can not do more with security params negotiation.
 			// Internally, parse_hello_retry_request does check for this.
@@ -304,6 +315,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 			ses.change_tls_state(.ts_client_hello)
 		}
 		.server_hello {
+			ses.require_tls_state([.ts_server_hello, .ts_server_hello_2], 'server_hello')!
 			sh := ServerHello.unpack(hsk.payload)!
 			if hsk.is_hrr()! {
 				// currently, parse_hello_retry_request return error
@@ -330,6 +342,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 		}
 		// receive server .encrypted_extensions?
 		.encrypted_extensions {
+			ses.require_tls_state([.ts_encrypted_extensions], 'encrypted_extensions')!
 			// EncryptedExtensions message sent by server immediately after
 			// ServerHello message. EncryptedExtensions message contains
 			// extensions that can be protected
@@ -347,6 +360,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 		}
 		// receive server .certificate_request
 		.certificate_request {
+			ses.require_tls_state([.ts_server_certificate_request], 'certificate_request')!
 			cert_req := CertificateRequest.unpack(hsk.payload)!
 			ses.parse_cert_request(cert_req)!
 			n := ses.ks.append_hskmsg_and_update_hash(hsk)!
@@ -361,6 +375,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 		}
 		// receive server certificate msg
 		.certificate {
+			ses.require_tls_state([.ts_server_certificate_request, .ts_server_certificate], 'certificate')!
 			cert := Certificate.unpack(hsk.payload)!
 			ses.parse_certificate(cert)!
 			n := ses.ks.append_hskmsg_and_update_hash(hsk)!
@@ -370,6 +385,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 		}
 		// receive server certificate_verify msg
 		.certificate_verify {
+			ses.require_tls_state([.ts_server_certificate_verify], 'certificate_verify')!
 			// When authenticating via a certificate. server should sent this message
 			// immediately after the Certificate message
 			cert_verif := CertificateVerify.unpack(hsk.payload)!
@@ -381,6 +397,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 		}
 		// receive server Finished msg
 		.finished {
+			ses.require_tls_state([.ts_server_finished], 'finished')!
 			// A Finished message is sent after an optinal server ChangeCipherSpec,
 			// Certificate, and CertificateVerify message to verify that the key
 			// exchange and authentication processes were successful
@@ -405,6 +422,7 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 			}
 		}
 		.new_session_ticket {
+			ses.require_tls_state([.ts_application_data], 'new_session_ticket')!
 			// In TLS 1.3, .new_session_ticket maybe sent by server after
 			// handshake was completed, in post handshake phase.
 			nst := NewSessionTicket.unpack(hsk.payload)!
@@ -415,13 +433,20 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 			ses.change_tls_state(.ts_application_data)
 		}
 		.key_update {
+			ses.require_tls_state([.ts_application_data], 'key_update')!
 			// KeyUpdate handshake message is used to indicate that the server
-			// is updating its sending cryptographic keys. This message can be sent
-			// by the server after it has sent a Finished message
-			ku := KeyUpdate.unpack(hsk.payload)!
+			// is updating its sending cryptographic keys after Finished.
+			if hsk.payload.len != 1 {
+				return error('decode_error: invalid KeyUpdate length')
+			}
+			ku := new_keyupdate(hsk.payload[0])!
 			ses.parse_key_update(ku)!
-			ses.do_key_update()!
-			ses.change_tls_state(.ts_key_update)
+			ses.update_server_application_traffic_secret()!
+			if ku == .was_requested {
+				ses.send_key_update(.not_requested)!
+				ses.update_client_application_traffic_secret()!
+			}
+			ses.change_tls_state(.ts_application_data)
 		}
 		else {
 			return error('Unsupported handshake type: ${hsk.msg_type}')
@@ -532,7 +557,7 @@ fn (mut ses Session) parse_tls_alert(a Alert) ! {
 }
 
 fn (mut ses Session) do_key_update() ! {
-	return error('not implemented')
+	ses.update_client_application_traffic_secret()!
 }
 
 fn (mut ses Session) parse_handshake_msg(hsk Handshake) ! {
@@ -687,6 +712,8 @@ fn (mut ses Session) parse_hello_retry_request(sh ServerHello) ! {
 }
 
 fn (mut ses Session) send_key_update(ku KeyUpdate) ! {
+	hsk := HandshakePayload(ku).pack_to_handshake()!
+	_ := ses.send_handshake_msg(hsk)!
 }
 
 fn (mut ses Session) calc_shared_secret() ! {
@@ -773,19 +800,30 @@ fn (mut ses Session) derive_app_traffic_keys() ! {
 	ses.ks.cln_app_wriv = ses.ks.client_application_write_iv(ses.ks.cln_app_tsecret, ses.reclayer.cipher.nonce_size())!
 }
 
-fn (mut ses Session) parse_key_update(ku KeyUpdate) ! {
-	// Ensure the value of the KeyUpdate.req_update field is valid
-	if ku.kupd_req != .update_not_requested && ku.kupd_req != .update_requested {
-		// If an implementation receives any other value, it must terminate the
-		// connection with an illegal_parameter alert
-		return error('ERROR_ILLEGAL_PARAMETER')
-	}
 
-	// Implementations that receive a KeyUpdate prior to receiving a Finished
-	// message must terminate the connection with an unexpected_message alert
-	if ses.tls_state() != .ts_application_data && ses.tls_state() != .ts_closing {
-		// Report an error
-		return error('ERROR_UNEXPECTED_MESSAGE')
+fn (mut ses Session) update_server_application_traffic_secret() ! {
+	ses.ks.srv_app_tsecret = ses.ks.next_traffic_secret(ses.ks.srv_app_tsecret)!
+	ses.ks.srv_app_wrkey = ses.ks.expand_label(ses.ks.srv_app_tsecret, write_key_label, nullbytes,
+		ses.reclayer.cipher.key_size())!
+	ses.ks.srv_app_wriv = ses.ks.expand_label(ses.ks.srv_app_tsecret, write_iv_label, nullbytes,
+		ses.reclayer.cipher.nonce_size())!
+	ses.reclayer.reset_read_seq()
+}
+
+fn (mut ses Session) update_client_application_traffic_secret() ! {
+	ses.ks.cln_app_tsecret = ses.ks.next_traffic_secret(ses.ks.cln_app_tsecret)!
+	ses.ks.cln_app_wrkey = ses.ks.expand_label(ses.ks.cln_app_tsecret, write_key_label, nullbytes,
+		ses.reclayer.cipher.key_size())!
+	ses.ks.cln_app_wriv = ses.ks.expand_label(ses.ks.cln_app_tsecret, write_iv_label, nullbytes,
+		ses.reclayer.cipher.nonce_size())!
+	ses.reclayer.reset_write_seq()
+}
+
+fn (mut ses Session) parse_key_update(_ KeyUpdate) ! {
+	// Implementations that receive a KeyUpdate prior to completing the handshake
+	// must terminate the connection with an unexpected_message alert.
+	if !ses.hsk_connected || int(ses.tls_state()) < int(TlsState.ts_connected) {
+		return error('unexpected_message: KeyUpdate before Finished')
 	}
 }
 
@@ -808,7 +846,11 @@ fn (mut ses Session) handle_cert_verify(cv CertificateVerify) ! {
 }
 
 fn (mut ses Session) parse_server_finished(fin Finished) ! {
-	// TODO: check server Finished.verify_data
+	srv_finkey := ses.ks.server_finished_key(ses.ks.srv_hsk_tsecret)!
+	verify_data := ses.ks.verify_data(srv_finkey, ses.ks.hsx)!
+	if !hmac.equal(verify_data, fin.verify_data) {
+		return error('decrypt_error: bad server Finished verify_data')
+	}
 }
 
 // Utility function
@@ -864,7 +906,8 @@ fn (mut ses Session) build_initial_client_hello() !ClientHello {
 	mut exts := []Extension{}
 	// server_name extension
 	host, _ := ses.peer_address()!
-	srvname := new_server_name(host)!
+	sni := if ses.server_name.len > 0 { ses.server_name } else { host }
+	srvname := new_server_name(sni)!
 	srvname_list := ServerNameList([srvname])
 	srvname_ext := srvname_list.pack_to_extension()!
 	exts.append(srvname_ext)
