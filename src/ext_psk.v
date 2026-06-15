@@ -2,10 +2,77 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// Pre-Shared Key Extension
+// Pre-Shared Key Extension and Pre-Shared Key Exchange Modes extension
 module tls13
 
 import encoding.binary
+
+// 4.2.9.  Pre-Shared Key Exchange Modes extension
+//
+// PskKeyExchangeMode = u8
+enum PskKeyExchangeMode as u8 {
+	psk_ke     = 0
+	psk_dhe_ke = 1
+	//(255)
+}
+
+// new_pskxmode creates a new PskKeyExchangeMode from byte value val
+@[inline]
+fn new_pskxmode(val u8) !PskKeyExchangeMode {
+	match val {
+		0x00 { return .psk_ke }
+		0x01 { return .psk_dhe_ke }
+		else { return error('unsupported PskKeyExchangeMode value') }
+	}
+}
+
+// struct {
+//          PskKeyExchangeMode ke_modes<1..255>;
+//     } PskKeyExchangeModes;
+type PskKeyExchangeModeList = []PskKeyExchangeMode
+
+// ext_from_psxmodes builds extension from array of PskKeyExchangeMode
+@[inline]
+fn ext_from_psxmodes(m []PskKeyExchangeMode) !Extension {
+	if m.len > max_u8 {
+		return error('invalid exceed size')
+	}
+	return Extension{
+		tipe: .psk_key_exchange_modes
+		data: pack_psxmode_list(m)!
+	}
+}
+
+// size_psxmode_list returns the size of array of PskKeyExchangeMode
+@[inline]
+fn size_psxmode_list(ks []PskKeyExchangeMode) int {
+	return size_u8list[PskKeyExchangeMode](ks, .size1)
+}
+
+// pack_psxmode_list encodes array of PskKeyExchangeMode into bytes array
+@[direct_array_access; inline]
+fn pack_psxmode_list(ks []PskKeyExchangeMode) ![]u8 {
+	return pack_u8list[PskKeyExchangeMode](ks, .size1)!
+}
+
+// parse_psxmode_list decodes bytes with 1-btye length
+@[direct_array_access]
+fn parse_psxmode_list(bytes []u8) ![]PskKeyExchangeMode {
+	if bytes.len < 1 {
+		return error('Bad PskKeyExchangeMode list bytes')
+	}
+	mut r := new_buffer(bytes)!
+	length := r.read_u8()!
+	kemodes_bytes := r.read_at_least(int(length))!
+
+	mut i := 0
+	mut pkms := []PskKeyExchangeMode{cap: int(length)}
+	for i < length {
+		pkms << new_pskxmode(kemodes_bytes[i])!
+		i += 1
+	}
+	return pkms
+}
 
 // 4.2.11.  Pre-Shared Key Extension
 //
@@ -16,7 +83,7 @@ import encoding.binary
 //
 const min_pskext_size = 2
 
-// PskExtension
+// 4.2.11.  Pre-Shared Key Extension
 //
 @[noinit]
 struct PskExtension {
@@ -95,61 +162,6 @@ fn parse_pskext(b []u8, msg_type HandshakeType) !PskExtension {
 			return error('bad msg_type for PskExtension')
 		}
 	}
-}
-
-// 4.2.9.  Pre-Shared Key Exchange Modes
-//
-// PskKeyExchangeMode = u8
-enum PskKeyExchangeMode as u8 {
-	psk_ke     = 0
-	psk_dhe_ke = 1
-	//(255)
-}
-
-// new_pskxmode creates a new PskKeyExchangeMode from byte value val
-@[inline]
-fn new_pskxmode(val u8) !PskKeyExchangeMode {
-	match val {
-		0x00 { return .psk_ke }
-		0x01 { return .psk_dhe_ke }
-		else { return error('unsupported PskKeyExchangeMode value') }
-	}
-}
-
-// struct {
-//          PskKeyExchangeMode ke_modes<1..255>;
-//     } PskKeyExchangeModes;
-type PskKeyExchangeModeList = []PskKeyExchangeMode
-
-// size_psxmode_list returns the size of array of PskKeyExchangeMode
-@[inline]
-fn size_psxmode_list(ks []PskKeyExchangeMode) int {
-	return size_u8list[PskKeyExchangeMode](ks, .size1)
-}
-
-// pack_psxmode_list encodes array of PskKeyExchangeMode into bytes array
-@[direct_array_access; inline]
-fn pack_psxmode_list(ks []PskKeyExchangeMode) ![]u8 {
-	return pack_u8list[PskKeyExchangeMode](ks, .size1)!
-}
-
-// parse_psxmode_list decodes bytes with 1-btye length
-@[direct_array_access]
-fn parse_psxmode_list(bytes []u8) !PskKeyExchangeModeList {
-	if bytes.len < 1 {
-		return error('Bad PskKeyExchangeModeList bytes')
-	}
-	mut r := new_buffer(bytes)!
-	length := r.read_u8()!
-	kemodes_bytes := r.read_at_least(int(length))!
-
-	mut i := 0
-	mut pkms := []PskKeyExchangeMode{cap: int(length)}
-	for i < length {
-		pkms << new_pskxmode(kemodes_bytes[i])!
-		i += 1
-	}
-	return PskKeyExchangeModeList(pkms)
 }
 
 // 4.2.11.  Pre-Shared Key Extension
