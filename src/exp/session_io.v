@@ -254,6 +254,33 @@ fn (mut ses Session) write_handshake(h Handshake) !int {
 	return ses.write_plaintext(pxt)!
 }
 
+
+// read_application_data reads decrypted application data, handling post-handshake
+// tickets, alerts, and key updates internally until application bytes are available.
+pub fn (mut ses Session) read_application_data() ![]u8 {
+	if !ses.hsk_connected {
+		return error('Handshake not completed')
+	}
+	if ses.app_buffer.len > 0 {
+		pxt := ses.app_buffer[0]
+		ses.app_buffer.delete(0)
+		return pxt.fragment
+	}
+	for {
+		pxt := ses.read_and_decrypt_record()!
+		ses.parse_post_msg(pxt)!
+		if ses.app_buffer.len > 0 {
+			pxt0 := ses.app_buffer[0]
+			ses.app_buffer.delete(0)
+			return pxt0.fragment
+		}
+		if ses.rcv_close_notify {
+			return []u8{}
+		}
+	}
+	return error('unreachable')
+}
+
 // write_application_data writes raw application data, its happens after handshake is completed.
 pub fn (mut ses Session) write_application_data(data []u8) !int {
 	// write .application_data type should happen after we reached .ts_connected state onwards
