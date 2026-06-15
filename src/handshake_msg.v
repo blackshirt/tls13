@@ -239,7 +239,7 @@ const max_chello_cmeths_size = max_u8
 @[noinit]
 struct ClientHello {
 mut:
-	version Version = .v12
+	version Version = .tls12
 	// 32-bytes of random bytes
 	random []u8
 	// legacy session id, <0..32> length
@@ -417,7 +417,7 @@ const min_shello_size = 40
 @[noinit]
 struct ServerHello {
 mut:
-	version Version = .v12
+	version Version = .tls12
 	random  []u8
 	sessid  []u8 // <0..32>;
 	// choosen ciphersuite
@@ -429,7 +429,9 @@ mut:
 
 @[inline]
 fn (s ServerHello) check_shello() ! {
-	return error('TODO')
+	if s.sessid.len > max_sessid_size {
+		return error('wrong sessid size')
+	}
 }
 
 // size_shello return the length of serialized single item of ServerHello s
@@ -964,6 +966,17 @@ fn size_fin(f Finished) int {
 	return f.verify_data.len
 }
 
+// finished_from_hsk tries to create Finished message from raw Handshake message
+@[inline]
+fn finished_from_hsk(h Handshake) !Finished {
+	if h.tipe != .finished {
+		return error('not finished message')
+	}
+	return Finished{
+		verify_data: h.payload
+	}
+}
+
 // 4.6.1.  New Session Ticket Message
 //
 const min_nst_size = 13
@@ -994,11 +1007,9 @@ fn size_nst(st NewSessionTicket) int {
 	mut n := 0
 	n += 8 // ticket lifetime + ageadd
 	// 1-byte nonce.len and the nonce
-	n += 1
-	n += st.nonce.len
+	n += 1 + st.nonce.len
 	// 2-bytes ticket.len and the ticket
-	n += 2
-	n += st.ticket.len
+	n += 2 + st.ticket.len
 
 	// extension list with 2-bytes length
 	n += size_extlist(st.xslist, .size2)
@@ -1009,7 +1020,7 @@ fn size_nst(st NewSessionTicket) int {
 // check_nst does basic validation on NewSessionTicket message st
 @[inline]
 fn (st NewSessionTicket) check_nst() ! {
-	return error('TODO')
+	// TODO
 }
 
 // pack_nst encodes NewSessionTicket message st into bytes array.
@@ -1044,16 +1055,18 @@ fn parse_nst(b []u8) !NewSessionTicket {
 	}
 	mut r := new_buffer(b)!
 
+	// parse ticket lifetime and ageadd
 	lifetime := r.read_u32()!
 	ageadd := r.read_u32()!
 
+	// parse 1-byte nonce length and the nonce bytes
 	nonce_len := r.read_u8()!
 	nonce := r.read_at_least(int(nonce_len))!
-
+	// parse 2-bytes ticket length and the ticket bytes
 	tkt_len := r.read_u16()!
 	ticket := r.read_at_least(int(tkt_len))!
 
-	// read extension list with prepended length
+	// read extension list with 2-bytes length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist_nolen(xs_bytes)!

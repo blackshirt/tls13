@@ -29,7 +29,7 @@ fn choose_supported_version(tv []Version) !Version {
 	// RFC mandates its in sorted form.
 	max_ver := arrays.max(tv)!
 	// we currently only support v1.3
-	if max_ver != .v13 {
+	if max_ver != .tls13 {
 		return error('nothing version in list was supported')
 	}
 	return max_ver

@@ -74,11 +74,11 @@ fn parse_ext(bytes []u8) !Extension {
 	}
 	mut r := new_buffer(bytes)!
 
-	// read ExtensionType
+	// read 2-bytes of ExtensionType
 	t := r.read_u16()!
 	tipe := new_exttype(t)!
 
-	// read data length
+	// read 2-bytes data length
 	length := r.read_u16()!
 	// read bytes of extension data
 	ext_data := r.read_at_least(int(length))!
@@ -92,6 +92,7 @@ fn parse_ext(bytes []u8) !Extension {
 // append adds one item e into arrays xs
 @[direct_array_access]
 fn (mut xs []Extension) append(e Extension) {
+	// If it already on there, just return
 	if e in xs {
 		return
 	}
@@ -113,7 +114,9 @@ fn parse_extlist(bytes []u8) ![]Extension {
 		return error('Bad ExtensionList bytes')
 	}
 	mut r := new_buffer(bytes)!
+	// read 2-bytes extension list length
 	length := r.read_u16()!
+	// read the bytes content of extension list
 	xs_bytes := r.read_at_least(int(length))!
 	return parse_extlist_nolen(xs_bytes)!
 }
@@ -344,7 +347,7 @@ fn parse_svnlist_nolen(bytes []u8) ![]ServerName {
 //        };
 //    } SupportedVersions;
 //
-const default_supported_version = [Version.v13]
+const default_supported_versions = [Version.tls13]
 
 // TLS 1.3 SupportedVersions
 //
@@ -362,6 +365,7 @@ mut:
 fn new_spv(msg_type HandshakeType, vers []Version) !SupportedVersions {
 	match msg_type {
 		.client_hello {
+			// the version list length was 1-byte size
 			if 2 * vers.len > max_u8 {
 				return error('version list exceeed max_u8')
 			}

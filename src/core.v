@@ -14,21 +14,21 @@ module tls13
 // version 0x0301 (reflecting TLS 1.0) and a record containing a second
 // ClientHello or a ServerHello MUST have version 0x0303 (reflecting TLS 1.2).
 enum Version as u16 {
-	v13 = 0x0304 // TLS 1.3
-	v12 = 0x0303 // TLS 1.2
-	v11 = 0x0302 // TLS 1.1
-	v10 = 0x0301 // TLS 1.0
-	v00 = 0x0300 // SSL 3.0, predecessor of TLS
+	tls13 = 0x0304 // TLS 1.3
+	tls12 = 0x0303 // TLS 1.2
+	tls11 = 0x0302 // TLS 1.1
+	tls10 = 0x0301 // TLS 1.0
+	ssl30 = 0x0300 // SSL 3.0, predecessor of TLS
 }
 
 // str represents TLS version as a common name string
 fn (v Version) str() string {
 	match v {
-		.v13 { return 'TLS 1.3' }
-		.v12 { return 'TLS 1.2' }
-		.v11 { return 'TLS 1.1' }
-		.v10 { return 'TLS 1.0' }
-		.v00 { return 'SSL 3.0' } // TLS 0.0
+		.tls13 { return 'TLS 1.3' }
+		.tls12 { return 'TLS 1.2' }
+		.tls11 { return 'TLS 1.1' }
+		.tls10 { return 'TLS 1.0' }
+		.ssl30 { return 'SSL 3.0' } // TLS 0.0
 	}
 }
 
@@ -37,11 +37,11 @@ fn (v Version) str() string {
 fn new_version(val u16) !Version {
 	match val {
 		// vfmt off
-		u16(0x0300) { return .v00 }
-		u16(0x0301) { return .v10 }
-		u16(0x0302) { return .v11 }
-		u16(0x0303) { return .v12 }
-		u16(0x0304) { return .v13 }
+		u16(0x0300) { return .ssl30 }
+		u16(0x0301) { return .tls10 }
+		u16(0x0302) { return .tls11 }
+		u16(0x0303) { return .tls12 }
+		u16(0x0304) { return .tls13 }
 		else {
 			return error('unsupported Version value')
 		}
@@ -53,7 +53,7 @@ fn new_version(val u16) !Version {
 //
 // ContentType is a content type of TLS 1.3 record defined as an u8 value
 enum ContentType as u8 {
-	invalid            = 0
+	// invalid            = 0
 	change_cipher_spec = 20 // 0x14
 	alert              = 21 // 0x15
 	handshake          = 22 // 0x16
@@ -71,7 +71,7 @@ fn new_ctntype(val u8) !ContentType {
 		22 { return .handshake }
 		23 { return .application_data }
 		24 { return .heartbeat }
-		0  { return .invalid }
+		// 0  { return .invalid }
 		// otherwise, return as is or an error ?
 		else {
 			return error('unsupported ContentType value')
@@ -83,7 +83,7 @@ fn new_ctntype(val u8) !ContentType {
 // str returns string representation of ContentType c
 fn (c ContentType) str() string {
 	match c {
-		.invalid { return 'INVALID' }
+		//.invalid { return 'INVALID' }
 		.change_cipher_spec { return 'CHANGE_CIPHER_SPEC' }
 		.alert { return 'ALERT' }
 		.handshake { return 'HANDSHAKE' }
@@ -308,11 +308,33 @@ mut:
 	desc  Description
 }
 
+// new_alert creates a new TLS 1.3 Alert message
 @[inline]
 fn new_alert(lv Level, desc Description) Alert {
 	return Alert{
 		level: lv
 		desc:  desc
+	}
+}
+
+// pack_alert encodes alert into 2-bytes array
+@[inline]
+fn pack_alert(a Alert) []u8 {
+	mut out := []u8{cap: 2}
+	out << u8(a.level)
+	out << u8(a.desc)
+	return out
+}
+
+// parse_alert decodes bytes as an Alert message
+@[direct_array_access; inline]
+fn parse_alert(bytes []u8) !Alert {
+	if bytes.len < 2 {
+		return error('underflow bytes alert')
+	}
+	return Alert{
+		level: new_level(bytes[0])!
+		desc:  new_desc(bytes[1])!
 	}
 }
 
@@ -616,7 +638,7 @@ fn new_group(val u16) !NamedGroup {
 	}
 }
 
-// TLS 1.3 CipherSuite
+// B.4.  Cipher Suites
 //
 // CipherSuite is a symmetric cipher suite defines the pair of the AEAD algorithm and
 // hash algorithm to be used with HKDF.
@@ -634,7 +656,8 @@ fn new_group(val u16) !NamedGroup {
 //            |                              |             |
 //            | TLS_AES_128_CCM_8_SHA256     | {0x13,0x05} |
 //            +------------------------------+-------------+
-// See B.4.  Cipher Suites at https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.4
+//
+// See at https://datatracker.ietf.org/doc/html/rfc8446#appendix-B.4
 //
 enum CipherSuite as u16 {
 	tls_aes128gcm_sha256            = 0x1301
