@@ -254,7 +254,6 @@ fn (mut ses Session) write_handshake(h Handshake) !int {
 	return ses.write_plaintext(pxt)!
 }
 
-
 // read_application_data reads decrypted application data, handling post-handshake
 // tickets, alerts, and key updates internally until application bytes are available.
 pub fn (mut ses Session) read_application_data() ![]u8 {

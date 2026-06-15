@@ -375,7 +375,8 @@ fn (mut ses Session) parse_server_hsk_msg(hsk Handshake) ! {
 		}
 		// receive server certificate msg
 		.certificate {
-			ses.require_tls_state([.ts_server_certificate_request, .ts_server_certificate], 'certificate')!
+			ses.require_tls_state([.ts_server_certificate_request, .ts_server_certificate],
+				'certificate')!
 			cert := Certificate.unpack(hsk.payload)!
 			ses.parse_certificate(cert)!
 			n := ses.ks.append_hskmsg_and_update_hash(hsk)!
@@ -763,18 +764,20 @@ fn (mut ses Session) derive_handshake_traffic_keys() ! {
 	assert hello_ctx.contains(HandshakeType.server_hello)
 
 	// TODO: add support for HelloRetryRequest
-	ses.ks.srv_hsk_tsecret = ses.ks.server_handshake_traffic_secret(ses.ks.hsk_secret,
-		hello_ctx)!
-	ses.ks.cln_hsk_tsecret = ses.ks.client_handshake_traffic_secret(ses.ks.hsk_secret,
-		hello_ctx)!
+	ses.ks.srv_hsk_tsecret = ses.ks.server_handshake_traffic_secret(ses.ks.hsk_secret, hello_ctx)!
+	ses.ks.cln_hsk_tsecret = ses.ks.client_handshake_traffic_secret(ses.ks.hsk_secret, hello_ctx)!
 
 	// hanshake write_key and write_iv
 	// server
-	ses.ks.srv_hsk_wrkey = ses.ks.server_handshake_write_key(ses.ks.srv_hsk_tsecret, ses.reclayer.cipher.key_size())!
-	ses.ks.srv_hsk_wriv = ses.ks.server_handshake_write_iv(ses.ks.srv_hsk_tsecret, ses.reclayer.cipher.nonce_size())!
+	ses.ks.srv_hsk_wrkey = ses.ks.server_handshake_write_key(ses.ks.srv_hsk_tsecret,
+		ses.reclayer.cipher.key_size())!
+	ses.ks.srv_hsk_wriv = ses.ks.server_handshake_write_iv(ses.ks.srv_hsk_tsecret,
+		ses.reclayer.cipher.nonce_size())!
 	// client
-	ses.ks.cln_hsk_wrkey = ses.ks.client_handshake_write_key(ses.ks.cln_hsk_tsecret, ses.reclayer.cipher.key_size())!
-	ses.ks.cln_hsk_wriv = ses.ks.client_handshake_write_iv(ses.ks.cln_hsk_tsecret, ses.reclayer.cipher.nonce_size())!
+	ses.ks.cln_hsk_wrkey = ses.ks.client_handshake_write_key(ses.ks.cln_hsk_tsecret,
+		ses.reclayer.cipher.key_size())!
+	ses.ks.cln_hsk_wriv = ses.ks.client_handshake_write_iv(ses.ks.cln_hsk_tsecret,
+		ses.reclayer.cipher.nonce_size())!
 }
 
 fn (mut ses Session) derive_app_traffic_keys() ! {
@@ -793,13 +796,14 @@ fn (mut ses Session) derive_app_traffic_keys() ! {
 
 	ses.ks.srv_app_wrkey = ses.ks.server_application_write_key(ses.ks.srv_app_tsecret,
 		ses.reclayer.cipher.key_size())!
-	ses.ks.srv_app_wriv = ses.ks.server_application_write_iv(ses.ks.srv_app_tsecret, ses.reclayer.cipher.nonce_size())!
+	ses.ks.srv_app_wriv = ses.ks.server_application_write_iv(ses.ks.srv_app_tsecret,
+		ses.reclayer.cipher.nonce_size())!
 
 	ses.ks.cln_app_wrkey = ses.ks.client_application_write_key(ses.ks.cln_app_tsecret,
 		ses.reclayer.cipher.key_size())!
-	ses.ks.cln_app_wriv = ses.ks.client_application_write_iv(ses.ks.cln_app_tsecret, ses.reclayer.cipher.nonce_size())!
+	ses.ks.cln_app_wriv = ses.ks.client_application_write_iv(ses.ks.cln_app_tsecret,
+		ses.reclayer.cipher.nonce_size())!
 }
-
 
 fn (mut ses Session) update_server_application_traffic_secret() ! {
 	ses.ks.srv_app_tsecret = ses.ks.next_traffic_secret(ses.ks.srv_app_tsecret)!

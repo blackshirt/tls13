@@ -366,8 +366,7 @@ fn (mut ks KeyScheduler) client_application_traffic_secret_0(master_secret []u8,
 // +-----> Derive-Secret(., "exp master", ClientHello...server Finished) = exporter_master_secret
 fn (mut ks KeyScheduler) exporter_master_secret(master_secret []u8, hsk_ctx []Handshake) ![]u8 {
 	if ks.exp_master_sec.len == 0 {
-		ks.exp_master_sec = ks.derive_secret(master_secret, exporter_mastersec_label,
-			hsk_ctx)!
+		ks.exp_master_sec = ks.derive_secret(master_secret, exporter_mastersec_label, hsk_ctx)!
 	}
 	return ks.exp_master_sec
 }
@@ -375,8 +374,7 @@ fn (mut ks KeyScheduler) exporter_master_secret(master_secret []u8, hsk_ctx []Ha
 // +-----> Derive-Secret(., "res master", ClientHello...client Finished) = resumption_master_secret
 fn (mut ks KeyScheduler) resumption_master_secret(master_secret []u8, hsk_ctx []Handshake) ![]u8 {
 	if ks.resump_master_sec.len == 0 {
-		ks.resump_master_sec = ks.derive_secret(master_secret, resump_mastersec_label,
-			hsk_ctx)!
+		ks.resump_master_sec = ks.derive_secret(master_secret, resump_mastersec_label, hsk_ctx)!
 	}
 	return ks.resump_master_sec
 }
@@ -437,8 +435,7 @@ fn (mut ks KeyScheduler) server_handshake_write_key(server_hsk_tsecret []u8, key
 
 fn (mut ks KeyScheduler) server_handshake_write_iv(server_hsk_tsecret []u8, iv_length int) ![]u8 {
 	if ks.srv_hsk_wriv.len == 0 {
-		ks.srv_hsk_wriv = ks.expand_label(server_hsk_tsecret, write_iv_label, nullbytes,
-			iv_length)!
+		ks.srv_hsk_wriv = ks.expand_label(server_hsk_tsecret, write_iv_label, nullbytes, iv_length)!
 	}
 	return ks.srv_hsk_wriv
 }
@@ -453,8 +450,7 @@ fn (mut ks KeyScheduler) client_handshake_write_key(client_hsk_tsecret []u8, key
 
 fn (mut ks KeyScheduler) client_handshake_write_iv(client_hsk_tsecret []u8, length int) ![]u8 {
 	if ks.cln_hsk_wriv.len == 0 {
-		ks.cln_hsk_wriv = ks.expand_label(client_hsk_tsecret, write_iv_label, nullbytes,
-			length)!
+		ks.cln_hsk_wriv = ks.expand_label(client_hsk_tsecret, write_iv_label, nullbytes, length)!
 	}
 	return ks.cln_hsk_wriv
 }
@@ -463,8 +459,7 @@ fn (mut ks KeyScheduler) client_handshake_write_iv(client_hsk_tsecret []u8, leng
 // srv_app_tsecret := server_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake)!
 fn (mut ks KeyScheduler) server_application_write_key(srv_app_tsecret []u8, key_length int) ![]u8 {
 	if ks.srv_app_wrkey.len == 0 {
-		ks.srv_app_wrkey = ks.expand_label(srv_app_tsecret, write_key_label, nullbytes,
-			key_length)!
+		ks.srv_app_wrkey = ks.expand_label(srv_app_tsecret, write_key_label, nullbytes, key_length)!
 	}
 	return ks.srv_app_wrkey
 }
@@ -472,8 +467,7 @@ fn (mut ks KeyScheduler) server_application_write_key(srv_app_tsecret []u8, key_
 // server_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake)
 fn (mut ks KeyScheduler) server_application_write_iv(srv_app_tsecret []u8, iv_length int) ![]u8 {
 	if ks.srv_app_wriv.len == 0 {
-		ks.srv_app_wriv = ks.expand_label(srv_app_tsecret, write_iv_label, nullbytes,
-			iv_length)!
+		ks.srv_app_wriv = ks.expand_label(srv_app_tsecret, write_iv_label, nullbytes, iv_length)!
 	}
 
 	return ks.srv_app_wriv
@@ -483,8 +477,7 @@ fn (mut ks KeyScheduler) server_application_write_iv(srv_app_tsecret []u8, iv_le
 // client_application_traffic_secret_0(master_secret []u8, hsk_ctx []Handshake8)
 fn (mut ks KeyScheduler) client_application_write_key(cln_app_tsecret []u8, key_length int) ![]u8 {
 	if ks.cln_app_wrkey.len == 0 {
-		ks.cln_app_wrkey = ks.expand_label(cln_app_tsecret, write_key_label, nullbytes,
-			key_length)!
+		ks.cln_app_wrkey = ks.expand_label(cln_app_tsecret, write_key_label, nullbytes, key_length)!
 	}
 	return ks.cln_app_wrkey
 }
@@ -492,8 +485,7 @@ fn (mut ks KeyScheduler) client_application_write_key(cln_app_tsecret []u8, key_
 fn (mut ks KeyScheduler) client_application_write_iv(cln_app_tsecret []u8, iv_length int) ![]u8 {
 	// FIXME: client_application_traffic_secret_0 should client_application_traffic_secret_n?
 	if ks.cln_app_wriv.len == 0 {
-		ks.cln_app_wriv = ks.expand_label(cln_app_tsecret, write_iv_label, nullbytes,
-			iv_length)!
+		ks.cln_app_wriv = ks.expand_label(cln_app_tsecret, write_iv_label, nullbytes, iv_length)!
 	}
 	return ks.cln_app_wriv
 }
@@ -508,13 +500,15 @@ fn (mut ks KeyScheduler) finished_key(base_key []u8) ![]u8 {
 
 // server_handshake_traffic_secret(hsk_secret []u8, []Handshake)
 fn (mut ks KeyScheduler) server_finished_key(srv_hsk_tsecret []u8) ![]u8 {
-	server_finkey := ks.expand_label(srv_hsk_tsecret, finished_key_label, nullbytes, ks.kdf.size()!)!
+	server_finkey :=
+		ks.expand_label(srv_hsk_tsecret, finished_key_label, nullbytes, ks.kdf.size()!)!
 
 	return server_finkey
 }
 
 fn (mut ks KeyScheduler) client_finished_key(cln_hsk_tsecret []u8) ![]u8 {
-	client_finkey := ks.expand_label(cln_hsk_tsecret, finished_key_label, nullbytes, ks.kdf.size()!)!
+	client_finkey :=
+		ks.expand_label(cln_hsk_tsecret, finished_key_label, nullbytes, ks.kdf.size()!)!
 
 	return client_finkey
 }

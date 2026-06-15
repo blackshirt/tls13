@@ -625,11 +625,13 @@ fn test_kd_client_calculate_tls13_finished() ! {
 
 	client_hsts := ks.client_handshake_traffic_secret(hsk_secret, hello_ctx)!
 
-	expected_client_hsk_ts := hex.decode('b3eddb126e067f35a780b3abf45e2d8f3b1a950738f52e9600746a0e27a55a21')!
+	expected_client_hsk_ts :=
+		hex.decode('b3eddb126e067f35a780b3abf45e2d8f3b1a950738f52e9600746a0e27a55a21')!
 	assert client_hsts == expected_client_hsk_ts
 
 	client_finkey := ks.finished_key(client_hsts)!
-	expected_client_finkey := hex.decode('b80ad01015fb2f0bd65ff7d4da5d6bf83f84821d1f87fdc7d3c75b5a7b42d9c4')!
+	expected_client_finkey :=
+		hex.decode('b80ad01015fb2f0bd65ff7d4da5d6bf83f84821d1f87fdc7d3c75b5a7b42d9c4')!
 	assert client_finkey == expected_client_finkey
 
 	cln_hsk_tsecret := ks.client_handshake_traffic_secret(hsk_secret, hello_ctx)!
@@ -666,7 +668,8 @@ fn test_kd_client_calculate_tls13_finished() ! {
 	assert client_hmac_data.hex() == 'a8ec436d677634ae525ac1fcebe11a039ec17694fac6e98527b642f2edd5ce61'
 
 	// calc verify_data
-	expected_client_verifydata := hex.decode('a8ec436d677634ae525ac1fcebe11a039ec17694fac6e98527b642f2edd5ce61')!
+	expected_client_verifydata :=
+		hex.decode('a8ec436d677634ae525ac1fcebe11a039ec17694fac6e98527b642f2edd5ce61')!
 	client_verify_data := ks.verify_data(client_finkey, hsk_ctx)!
 	assert client_verify_data == expected_client_verifydata
 }

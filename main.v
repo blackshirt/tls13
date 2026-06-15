@@ -1,19 +1,15 @@
-module main
-
-import os
-import log
-import tls13
+import blackshirt.tls13
 
 struct ClientConfig {
 mut:
-	address     string = 'localhost:8443'
-	server_name string
-	message     string = 'Test data for TLS 1.3'
-	http_path   string
-	read_reply  bool = true
-	read_all    bool
+	address      string = 'localhost:8443'
+	server_name  string
+	message      string = 'Test data for TLS 1.3'
+	http_path    string
+	read_reply   bool = true
+	read_all     bool
 	show_tickets bool = true
-	compat      bool
+	compat       bool
 }
 
 fn usage() {
@@ -34,7 +30,8 @@ fn usage() {
 	println('  --help                   Show this help')
 }
 
-fn value_after(args []string, mut i int, name string) !string {
+fn value_after(args []string, i_ int, name string) !string {
+	mut i := i_
 	arg := args[i]
 	prefix := '${name}='
 	if arg.starts_with(prefix) {
@@ -106,7 +103,11 @@ fn application_payload(cfg ClientConfig) []u8 {
 
 fn run() ! {
 	cfg := parse_args(os.args)!
-	server_name := if cfg.server_name.len > 0 { cfg.server_name } else { host_from_address(cfg.address) }
+	server_name := if cfg.server_name.len > 0 {
+		cfg.server_name
+	} else {
+		host_from_address(cfg.address)
+	}
 	opt := tls13.Options{
 		server_name: server_name
 		compat:      cfg.compat

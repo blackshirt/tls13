@@ -103,6 +103,7 @@ fn parse_ksext(bytes []u8, msg_type HandshakeType, is_hrr bool) !KeyShareExtensi
 			return error('invalid msg_type param')
 		}
 	}
+
 	return kx
 }
 

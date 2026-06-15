@@ -54,6 +54,7 @@ fn pack_u8list[T](ts []T, n SizeT) ![]u8 {
 			return error('unsupported length')
 		}
 	}
+
 	// encodes the contents, and return the result
 	out << pack_u8list_nolen[T](ts)
 	return out
@@ -129,6 +130,7 @@ fn pack_u16list[T](ts []T, n SizeT) ![]u8 {
 			out << bol3.bytes()!
 		}
 	}
+
 	// serializes the items
 	out << pack_u16list_nolen[T](ts)
 
@@ -198,6 +200,7 @@ fn parse_u16list[T](bytes []u8, cb_make fn (u16) !T, n SizeT) ![]T {
 		.size2 { length = int(r.read_u16()!) }
 		else { return error('unsupported length') }
 	}
+
 	src := r.read_at_least(length)!
 
 	return parse_u16list_nolen[T](src, cb_make)!
@@ -258,6 +261,7 @@ fn pack_raw(r []u8, n SizeT) ![]u8 {
 		}
 		// TODO: support for more long bytes length
 	}
+
 	// get the raw bytes item, and append into output
 	out << r
 
@@ -327,6 +331,7 @@ fn pack_objlist[T](ts []T, cb_objpack fn (T) ![]u8, cb_objsize fn (T) int, n Siz
 			out << bol3.bytes()!
 		}
 	}
+
 	// encodes the object list payload
 	out << pack_objlist_nolen[T](ts, cb_objpack, cb_objsize)!
 
