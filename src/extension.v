@@ -213,6 +213,7 @@ fn size_svname(s ServerName) int {
 			panic('unsupported name type')
 		}
 	}
+
 	return n
 }
 
@@ -230,6 +231,7 @@ fn pack_svname(s ServerName) ![]u8 {
 			return error('unsupported name type')
 		}
 	}
+
 	return out
 }
 
@@ -424,6 +426,7 @@ fn pack_spv(s SupportedVersions) ![]u8 {
 			return error('invalid msg_type for supported_versions')
 		}
 	}
+
 	return out
 }
 
@@ -657,5 +660,6 @@ fn parse_edi(bytes []u8, msg_type HandshakeType) !EarlyDataIndication {
 			return error('invalid msg_type for early data indication')
 		}
 	}
+
 	return e
 }
