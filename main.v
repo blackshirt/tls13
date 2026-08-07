@@ -1,4 +1,6 @@
 import blackshirt.tls13
+import os
+import log
 
 struct ClientConfig {
 mut:

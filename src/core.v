@@ -2,37 +2,35 @@
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 //
-// Some core of TLS 1.3 opaque definition
+// Core TLS 1.3 opaque type definitions and wire value helpers.
 module tls13
 
-// TLS 1.3 Version
-// TLS 1.3 ProtocolVersion;
+// TLS Version values defined by RFC 8446.
 //
-// The rfc8446 document describes TLS 1.3, which uses the version 0x0304.
-// This version value is historical, deriving from the use of 0x0301 for TLS 1.0 and 0x0300 for SSL 3.0.
-// In order to maximize backward compatibility, a record containing an initial ClientHello SHOULD have
-// version 0x0301 (reflecting TLS 1.0) and a record containing a second
-// ClientHello or a ServerHello MUST have version 0x0303 (reflecting TLS 1.2).
+// These values are encoded on the wire as a 16-bit protocol version.
+// TLS 1.3 uses 0x0304, while older versions remain available for compatibility.
 enum Version as u16 {
-	tls13 = 0x0304 // TLS 1.3
-	tls12 = 0x0303 // TLS 1.2
-	tls11 = 0x0302 // TLS 1.1
-	tls10 = 0x0301 // TLS 1.0
-	ssl30 = 0x0300 // SSL 3.0, predecessor of TLS
+	tls13 = 0x0304
+	tls12 = 0x0303
+	tls11 = 0x0302
+	tls10 = 0x0301
+	ssl30 = 0x0300
 }
 
-// str represents TLS version as a common name string
+// str returns the human-readable name for the TLS version.
 fn (v Version) str() string {
 	match v {
 		.tls13 { return 'TLS 1.3' }
 		.tls12 { return 'TLS 1.2' }
 		.tls11 { return 'TLS 1.1' }
 		.tls10 { return 'TLS 1.0' }
-		.ssl30 { return 'SSL 3.0' } // TLS 0.0
+		.ssl30 { return 'SSL 3.0' }
 	}
 }
 
-// new_version creates TLS version from u16 value
+// new_version converts a raw u16 wire value into a Version enum.
+//
+// Returns an error for unsupported or invalid version values.
 @[inline]
 fn new_version(val u16) !Version {
 	match val {
@@ -49,41 +47,48 @@ fn new_version(val u16) !Version {
 	}
 }
 
-// TLS 1.3 Content Type
+// ContentType values for TLS record payloads.
 //
-// ContentType is a content type of TLS 1.3 record defined as an u8 value
+// Each content type is encoded as a single byte on the TLS record layer.
 enum ContentType as u8 {
-	// invalid            = 0
-	change_cipher_spec = 20 // 0x14
-	alert              = 21 // 0x15
-	handshake          = 22 // 0x16
-	application_data   = 23 // 0x17
-	heartbeat          = 24 // 0x18
+	change_cipher_spec = 20
+	alert              = 21
+	handshake          = 22
+	application_data   = 23
+	heartbeat          = 24
 }
 
-// new_ctntype creates a new ContentType from byte value.
+// new_ctntype converts a raw u8 wire value into a ContentType enum.
+//
+// Returns an error when the byte value does not map to a supported
+// TLS content type.
 @[inline]
 fn new_ctntype(val u8) !ContentType {
 	match val {
-		// vfmt off
-		20 { return .change_cipher_spec }
-		21 { return .alert }
-		22 { return .handshake }
-		23 { return .application_data }
-		24 { return .heartbeat }
-		// 0  { return .invalid }
-		// otherwise, return as is or an error ?
+		20 {
+			return .change_cipher_spec
+		}
+		21 {
+			return .alert
+		}
+		22 {
+			return .handshake
+		}
+		23 {
+			return .application_data
+		}
+		24 {
+			return .heartbeat
+		}
 		else {
 			return error('unsupported ContentType value')
 		}
-		// vfmt on
 	}
 }
 
-// str returns string representation of ContentType c
+// str returns the human-readable name for a ContentType.
 fn (c ContentType) str() string {
 	match c {
-		//.invalid { return 'INVALID' }
 		.change_cipher_spec { return 'CHANGE_CIPHER_SPEC' }
 		.alert { return 'ALERT' }
 		.handshake { return 'HANDSHAKE' }
@@ -92,33 +97,36 @@ fn (c ContentType) str() string {
 	}
 }
 
-// TLS 1.3 Handshake message type
+// HandshakeType values for TLS handshake messages.
 //
-// HandshakeType is a TLS 1.3 handshake type defined as an u8 value
+// These values appear in the handshake message header and denote the
+// specific handshake payload type.
 enum HandshakeType as u8 {
-	hello_request        = 0 // _RESERVED
+	hello_request        = 0
 	client_hello         = 1
 	server_hello         = 2
-	hello_verify_request = 3 // _RESERVED
+	hello_verify_request = 3
 	new_session_ticket   = 4
 	end_of_early_data    = 5
-	hello_retry_request  = 6 // _RESERVED =
+	hello_retry_request  = 6
 	encrypted_extensions = 8
 	certificate          = 11
-	server_key_exchange  = 12 // _RESERVED
+	server_key_exchange  = 12
 	certificate_request  = 13
-	server_hello_done    = 14 // _RESERVED
+	server_hello_done    = 14
 	certificate_verify   = 15
-	client_key_exchange  = 16 // _RESERVED
+	client_key_exchange  = 16
 	finished             = 20
-	certificate_url      = 21 // _RESERVED
-	certificate_status   = 22 // _RESERVED
-	supplemental_data    = 23 // _RESERVED
+	certificate_url      = 21
+	certificate_status   = 22
+	supplemental_data    = 23
 	key_update           = 24
 	message_hash         = 254
 }
 
-// new_hsktype creates a HandshakeType from byte value
+// new_hsktype converts a raw u8 handshake type value into a HandshakeType enum.
+//
+// Returns an error for unsupported handshake type values.
 @[inline]
 fn new_hsktype(val u8) !HandshakeType {
 	match val {
@@ -150,16 +158,17 @@ fn new_hsktype(val u8) !HandshakeType {
 	}
 }
 
-// B.2.  Alert Messages
+// Alert level values used in TLS alert messages.
 //
-// enum { warning(1), fatal(2), (255) } AlertLevel;
+// These values indicate whether an alert is a warning or fatal condition.
 enum Level as u8 {
 	warning = 0x01
 	fatal   = 0x02
-	// 255
 }
 
-// new_level creates a new alert level from byte value.
+// new_level converts a raw alert level byte into a Level enum.
+//
+// Returns an error when the value is not a recognized alert level.
 @[inline]
 fn new_level(val u8) !Level {
 	match val {
@@ -169,7 +178,7 @@ fn new_level(val u8) !Level {
 	}
 }
 
-// str returns string representation of this level
+// str returns the human-readable name for an alert Level.
 @[inline]
 fn (al Level) str() string {
 	match al {
@@ -178,17 +187,18 @@ fn (al Level) str() string {
 	}
 }
 
-// TLS 1.3 Description
+// Alert description values for TLS alert messages.
 //
+// These codes specify the reason for the alert.
 enum Description as u8 {
 	close_notify                    = 0
 	unexpected_message              = 10
 	bad_record_mac                  = 20
-	decryption_failed               = 21 // _RESERVED
+	decryption_failed               = 21
 	record_overflow                 = 22
-	decompression_failure           = 30 // _RESERVED
+	decompression_failure           = 30
 	handshake_failure               = 40
-	no_certificate                  = 41 // RESERVED
+	no_certificate                  = 41
 	bad_certificate                 = 42
 	unsupported_certificate         = 43
 	certificate_revoked             = 44
@@ -199,36 +209,38 @@ enum Description as u8 {
 	access_denied                   = 49
 	decode_error                    = 50
 	decrypt_error                   = 51
-	export_restriction              = 60 //_RESERVED
+	export_restriction              = 60
 	protocol_version                = 70
 	insufficient_security           = 71
 	internal_error                  = 80
 	inappropriate_fallback          = 86
 	user_canceled                   = 90
-	no_renegotiation                = 100 //_RESERVED
+	no_renegotiation                = 100
 	missing_extension               = 109
 	unsupported_extension           = 110
-	certificate_unobtainable        = 111 //_RESERVED
+	certificate_unobtainable        = 111
 	unrecognized_name               = 112
 	bad_certificate_status_response = 113
-	bad_certificate_hash_value      = 114 //_RESERVED
+	bad_certificate_hash_value      = 114
 	unknown_psk_identity            = 115
 	certificate_required            = 116
 	no_application_protocol         = 120
 }
 
-// new_desc creates a Description from byte value
+// new_desc converts a raw alert description byte into a Description enum.
+//
+// Returns an error for unsupported or invalid alert description values.
 @[inline]
 fn new_desc(val u8) !Description {
 	match val {
 		0 { return .close_notify }
 		10 { return .unexpected_message }
 		20 { return .bad_record_mac }
-		21 { return .decryption_failed } // _RESERVED
+		21 { return .decryption_failed }
 		22 { return .record_overflow }
-		30 { return .decompression_failure } // _RESERVED
+		30 { return .decompression_failure }
 		40 { return .handshake_failure }
-		41 { return .no_certificate } // RESERVED
+		41 { return .no_certificate }
 		42 { return .bad_certificate }
 		43 { return .unsupported_certificate }
 		44 { return .certificate_revoked }
@@ -239,19 +251,19 @@ fn new_desc(val u8) !Description {
 		49 { return .access_denied }
 		50 { return .decode_error }
 		51 { return .decrypt_error }
-		60 { return .export_restriction } //_RESERVED
+		60 { return .export_restriction }
 		70 { return .protocol_version }
 		71 { return .insufficient_security }
 		80 { return .internal_error }
 		86 { return .inappropriate_fallback }
 		90 { return .user_canceled }
-		100 { return .no_renegotiation } //_RESERVED
+		100 { return .no_renegotiation }
 		109 { return .missing_extension }
 		110 { return .unsupported_extension }
-		111 { return .certificate_unobtainable } //_RESERVED
+		111 { return .certificate_unobtainable }
 		112 { return .unrecognized_name }
 		113 { return .bad_certificate_status_response }
-		114 { return .bad_certificate_hash_value } //_RESERVED
+		114 { return .bad_certificate_hash_value }
 		115 { return .unknown_psk_identity }
 		116 { return .certificate_required }
 		120 { return .no_application_protocol }

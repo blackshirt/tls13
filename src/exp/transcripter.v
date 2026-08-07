@@ -322,7 +322,7 @@ fn (fux FullContext) pack_full_context(c crypto.Hash) ![]u8 {
 
 // Utility function
 // take_context splits arrays of handshake messages, from first to end, and the rest.
-fn (hs []Handshake) take_context(end int) !([]tls13.Handshake, []tls13.Handshake) {
+fn (hs []Handshake) take_context(end int) !([]Handshake, []Handshake) {
 	if end > hs.len {
 		return error('bad end')
 	}
@@ -333,7 +333,7 @@ fn (hs []Handshake) take_context(end int) !([]tls13.Handshake, []tls13.Handshake
 
 // take_hello_context takes clienthello and serverhello parts of handshakes messages,
 // included hrr message if any, it returns hello context
-fn (hs []Handshake) take_hello_context() !(HelloContext, []tls13.Handshake) {
+fn (hs []Handshake) take_hello_context() !(HelloContext, []Handshake) {
 	mut end := 0
 	with_hrr := hs.contains_hrr()!
 	if !with_hrr {
@@ -351,7 +351,7 @@ fn (hs []Handshake) take_hello_context() !(HelloContext, []tls13.Handshake) {
 }
 
 // take_premiddle_context takes Handshake messages before the last server Finished message
-fn (hs []Handshake) take_upto_premiddle_context() ![]tls13.Handshake {
+fn (hs []Handshake) take_upto_premiddle_context() ![]Handshake {
 	middle, _ := hs.take_upto_middle_context()!
 
 	assert middle[middle.len - 1].msg_type == .finished
@@ -359,7 +359,7 @@ fn (hs []Handshake) take_upto_premiddle_context() ![]tls13.Handshake {
 	return premiddle
 }
 
-fn (hs []Handshake) take_upto_middle_context() !([]tls13.Handshake, []tls13.Handshake) {
+fn (hs []Handshake) take_upto_middle_context() !([]Handshake, []Handshake) {
 	mut awal_length := 0
 	mut end := 0
 	with_hrr := hs.contains_hrr()!

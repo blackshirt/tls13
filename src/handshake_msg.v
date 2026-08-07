@@ -3,39 +3,42 @@
 // that can be found in the LICENSE file.
 //
 // TLS 1.3 handshake module
+//
+// This module provides TLS 1.3 handshake message definitions, wire format
+// helpers, and encoding/decoding functions for handshake payloads.
 module tls13
 
 import encoding.binary
 import crypto.internal.subtle
 
-// helloretry_magic was special constant used in HelloRetryRequest message but
-// with Random set to the special value of the SHA-256 of "HelloRetryRequest"
-// ie, 	CF 21 AD 74 E5 9A 61 11 BE 1D 8C 02 1E 65 B8 91
-// 		C2 A2 11 16 7A BB 8C 5E 07 9E 09 E2 C8 A8 33 9C
+// helloretry_magic is the fixed ServerHello random value that signals a
+// HelloRetryRequest as defined by RFC 8446.
 const helloretry_magic = [u8(0xCF), 0x21, 0xAD, 0x74, 0xE5, 0x9A, 0x61, 0x11, 0xBE, 0x1D, 0x8C,
 	0x02, 0x1E, 0x65, 0xB8, 0x91, 0xC2, 0xA2, 0x11, 0x16, 0x7A, 0xBB, 0x8C, 0x5E, 0x07, 0x9E, 0x09,
 	0xE2, 0xC8, 0xA8, 0x33, 0x9C]
 
+// TLS downgrade-detection values used when validating ServerHello random.
 const tls12_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x01]
 const tls11_random_magic = [u8(0x44), 0x4F, 0x57, 0x4E, 0x47, 0x52, 0x44, 0x00]
 
-// minimal handshake message size
+// minimal handshake message header size (1-byte type + 3-byte length)
 const min_hskmsg_size = 4
-// Used in ClientHello and ServerHello
+// Handshake random and session ID sizes used in ClientHello and ServerHello
 const min_random_size = 32
 const max_sessid_size = 32
 
-// Handshake represents Tls 1.3 handshake message.
+// Handshake represents a TLS 1.3 handshake message header and payload.
 //
+// The payload is the serialized message body that follows the handshake type
+// and 3-byte length fields.
 @[noinit]
 struct Handshake {
 mut:
-	// tipe was u8 value
-	tipe HandshakeType
-	// max_u24 lengtb
+	tipe    HandshakeType
 	payload []u8
 }
 
+// check_hsk validates Handshake payload length against the maximum allowed size.
 @[inline]
 fn (h Handshake) check_hsk() ! {
 	if h.payload.len > max_u24 {
@@ -43,34 +46,33 @@ fn (h Handshake) check_hsk() ! {
 	}
 }
 
-// size_hsk size of serialized handshake message h
+// size_hsk returns the serialized length of a Handshake message.
 @[inline]
 fn size_hsk(h Handshake) int {
 	return min_hskmsg_size + h.payload.len
 }
 
+// expect_hsk_type returns true when the handshake message is the requested type.
 fn (h Handshake) expect_hsk_type(hsktype HandshakeType) bool {
 	return h.tipe == hsktype
 }
 
-// is_hrr checks whether this handshake message is HelloRetryRequest message.
-// two cases here, first of it, the tipe is hello_retry_request type and the second
-// if the tipe is .server_hello with random value contains helloretry_magic constant.
-// otherwise, its not HelloRetryRequest message.
+// is_hrr returns true when the handshake is a HelloRetryRequest.
+//
+// It detects HRR messages either by explicit handshake type or by a ServerHello
+// payload whose random field matches the HRR magic value.
 fn (h Handshake) is_hrr() !bool {
 	if h.tipe == .hello_retry_request {
 		return true
 	}
 	if h.tipe == .server_hello {
 		sh := parse_shello(h.payload)!
-		if sh.is_hrr() {
-			return true
-		}
+		return sh.is_hrr()
 	}
 	return false
 }
 
-// pack_hsk encodes handshake message h into bytes array.
+// pack_hsk serializes a Handshake message into its wire format.
 @[inline]
 fn pack_hsk(h Handshake) ![]u8 {
 	h.check_hsk()!
@@ -82,7 +84,7 @@ fn pack_hsk(h Handshake) ![]u8 {
 	return out
 }
 
-// parse_hsk decodes bytes b into raw handshake message.
+// parse_hsk deserializes raw handshake bytes into a Handshake value.
 @[direct_array_access; inline]
 fn parse_hsk(b []u8) !Handshake {
 	if b.len < min_hskmsg_size {
@@ -92,11 +94,9 @@ fn parse_hsk(b []u8) !Handshake {
 	tp := r.read_u8()!
 	tipe := new_hsktype(tp)!
 
-	// bytes of length
 	bol3 := r.read_at_least(3)!
 	length := u24_from_bytes(bol3)!
 
-	// read Handshake payload
 	payload := r.read_at_least(int(length.value))!
 
 	hsk := Handshake{
@@ -108,33 +108,35 @@ fn parse_hsk(b []u8) !Handshake {
 	return hsk
 }
 
-// filtered_msg_type filters []Handshake based on provided tipe, its maybe null or contains filtered type.
+// filtered_hsk_with_type returns only the handshake messages that match msgtype.
 fn (hs []Handshake) filtered_hsk_with_type(msgtype HandshakeType) []Handshake {
 	return hs.filter(it.tipe == msgtype)
 }
 
-// HandshakeList is arrays of handshake messages
+// HandshakeList is an array of handshake messages.
 type HandshakeList = []Handshake
 
-// the size of encoded handshake list with n-bytes length
+// size_hsklist returns the encoded length of a handshake list when prefixed
+// with an n-byte length field.
 @[direct_array_access; inline]
 fn size_hsklist(hs []Handshake, n SizeT) int {
 	return size_objlist[Handshake](hs, size_hsk, n)
 }
 
-// the size of encoded handshake list
+// size_hsklist_nolen returns the encoded length of a handshake list without
+// any length prefix.
 @[direct_array_access; inline]
 fn size_hsklist_nolen(hs []Handshake) int {
 	return size_objlist_nolen[Handshake](hs, size_hsk)
 }
 
-// encodes handshake list with n-bytes length
+// pack_hsklist encodes a handshake list with an explicit length prefix.
 @[direct_array_access; inline]
 fn pack_hsklist(hs []Handshake, n SizeT) ![]u8 {
 	return pack_objlist[Handshake](hs, pack_hsk, size_hsk, n)!
 }
 
-// encodes handshake list
+// pack_hsklist_nolen encodes a handshake list without a length prefix.
 @[direct_array_access]
 fn pack_hsklist_nolen(hs []Handshake) ![]u8 {
 	return pack_objlist_nolen[Handshake](hs, pack_hsk, size_hsk)!
@@ -223,140 +225,99 @@ fn pack_hskpayload(h HskPayload) ![]u8 {
 	}
 }
 
-// TLS 1.3 ClientHello handshake message
+// TLS 1.3 ClientHello handshake message definitions and wire helpers.
 //
-// See the spec at 4.1.2.  Client Hello
-//
-// Minimal length checked here inculdes minimal of csuites and xslist length
-// Minimal bytes lengtb = 2 + 32 + 1 + 0 + 2 + 2 + 1 + 1 + 2 + 8
-//
+// See RFC 8446 section 4.1.2 for the record layout and field requirements.
+// The minimum size accounts for version, random, session ID, cipher suites,
+// compression methods, and extension list overhead.
 const min_chello_size = 51
 const min_chello_cmeths_size = 1
 const max_chello_cmeths_size = max_u8
 
-// TLS 1.3 ClientHello handshake message
-//
+// ClientHello carries client protocol preferences, legacy fields, and extensions.
 @[noinit]
 struct ClientHello {
 mut:
 	version Version = .tls12
-	// 32-bytes of random bytes
-	random []u8
-	// legacy session id, <0..32> length
-	sessid []u8
-	// list of client supported ciphersuites <2..2^16-2>
+	random  []u8
+	sessid  []u8
 	csuites []CipherSuite
-	// legacy list of compression method, <1..2^8-1>;
-	cmeths []u8
-	// client extension list <8..2^16-1>;
-	xslist []Extension
+	cmeths  []u8
+	xslist  []Extension
 }
 
-// check_chello validates ClientHello c
+// check_chello validates a ClientHello before serialization.
 @[inline]
 fn (c ClientHello) check_chello() ! {
-	// TODO: should ClientHello version == TLS 1.2 ?
 	if c.sessid.len > max_sessid_size {
 		return error('Session id length exceed')
 	}
 	if c.random.len != min_random_size {
 		return error('Bad random length')
 	}
-	// non-null ciphersuites
 	if c.csuites.len < 1 {
 		return error('null-length of ciphersuites was not allowed')
 	}
 	if c.cmeths.len < min_chello_cmeths_size || c.cmeths.len > max_chello_cmeths_size {
 		return error('invalid compression_method size')
 	}
-	// TODO: check another constrains
-	// xslist<8..2^16-1>;
 }
 
-// size_chello returns the length of serialized ClientHello c.
+// size_chello returns the encoded length of a ClientHello message.
 @[inline]
 fn size_chello(c ClientHello) int {
 	mut n := 0
-	// u16-sized Version
 	n += 2
-	// 32 bytes of random
 	n += 32
-	// 1-byte of sessid.len and sessid
 	n += 1 + c.sessid.len
-
-	// Arrays of ciphersuite was prepended by 2-bytes length
 	n += size_u16list[CipherSuite](c.csuites, .size2)
-
-	// compression_method values plus 1-byte length
 	n += 1 + c.cmeths.len
-
-	// extension list with prepended 2-bytes length
 	n += size_extlist(c.xslist, .size2)
-
 	return n
 }
 
-// pack_chello encodes ClientHello c into bytes array
+// pack_chello serializes the ClientHello to TLS wire format.
 @[inline]
 fn pack_chello(c ClientHello) ![]u8 {
-	// validates ClientHello and setup output buffer
 	c.check_chello()!
 	mut out := []u8{cap: size_chello(c)}
 
-	// encodes TLS version, its an u16 value
 	out << pack_u16item[Version](c.version)
-
-	// encodes ClientHello random bytes
 	out << c.random
-
-	// encodes sessid, with 1-byte length
 	out << pack_raw(c.sessid, .size1)!
-
-	// encodes CipherSuite arrays, with 2-bytes length.
 	out << pack_u16list[CipherSuite](c.csuites, .size2)!
-
-	// encodes compression method array with 1-byte length
 	out << pack_raw(c.cmeths, .size1)!
-
-	// encodes extension list with 2-bytes length
 	out << pack_extlist(c.xslist, .size2)!
 
 	return out
 }
 
-// parse_chello decodes bytes into ClientHello and validates the result.
+// parse_chello decodes a ClientHello from raw bytes and validates its fields.
 @[direct_array_access; inline]
 fn parse_chello(bytes []u8) !ClientHello {
 	if bytes.len < min_chello_size {
 		return error('underflow client hello bytes')
 	}
 	mut r := new_buffer(bytes)!
-	// read two-bytes version
 	val := r.read_u16()!
 	ver := new_version(val)!
 
-	// read 32-bytes of random bytes
 	random := r.read_at_least(32)!
 
-	// read 1-byte sessid length and sessid bytes
 	sid := r.read_u8()!
 	sid_bytes := r.read_at_least(int(sid))!
 
-	// read cipher suites list with prepended 2-bytes length
 	ciphers_len := r.read_u16()!
 	ciphers_data := r.read_at_least(int(ciphers_len))!
 	csuites := parse_u16list_nolen[CipherSuite](ciphers_data, new_csuite)!
 
-	// read 1-btye of compression method length and the contents of compression method bytes
 	cm := r.read_u8()!
 	cmeths := r.read_at_least(int(cm))!
 
-	// read extension list with 2-bytes length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist_nolen(xs_bytes)!
 
-	// build the result
 	ch := ClientHello{
 		version: ver
 		random:  random
@@ -365,7 +326,6 @@ fn parse_chello(bytes []u8) !ClientHello {
 		cmeths:  cmeths
 		xslist:  xs
 	}
-	// validates the result
 	ch.check_chello()!
 
 	return ch
@@ -408,25 +368,23 @@ fn (ch ClientHello) check_compliance(sh ServerHello) !bool {
 }
 */
 
-// TLS 1.3 ServerHello handshake message
+// TLS 1.3 ServerHello handshake message definitions and wire helpers.
 //
+// See RFC 8446 section 4.1.3 for the ServerHello structure and field semantics.
 const min_shello_size = 40
 
-// 4.1.3.  Server Hello
-//
 @[noinit]
 struct ServerHello {
 mut:
 	version Version = .tls12
 	random  []u8
-	sessid  []u8 // <0..32>;
-	// choosen ciphersuite
-	csuite CipherSuite
-	// choosen compression method
-	cmeth  u8 = 0x00
-	xslist []Extension // <6..2^16-1>;
+	sessid  []u8
+	csuite  CipherSuite
+	cmeth   u8 = 0x00
+	xslist  []Extension
 }
 
+// check_shello validates the ServerHello session-id length.
 @[inline]
 fn (s ServerHello) check_shello() ! {
 	if s.sessid.len > max_sessid_size {
@@ -434,85 +392,59 @@ fn (s ServerHello) check_shello() ! {
 	}
 }
 
-// size_shello return the length of serialized single item of ServerHello s
+// size_shello returns the encoded length of a ServerHello message.
 @[inline]
 fn size_shello(s ServerHello) int {
 	mut n := 0
-	// 2-bytes of Version
 	n += 2
-	// 32-bytes of random
 	n += 32
-	// 1-byte of sessid.len plus sessid.len
 	n += 1 + s.sessid.len
-	// 2-bytes ciphersuite
 	n += 2
-	// 1-byte compression_method
 	n += 1
-	// extension list with prepended 2-bytes length
 	n += size_extlist(s.xslist, .size2)
-
 	return n
 }
 
-// pack_shello encodes a single item of ServerHello s into bytes array.
+// pack_shello serializes the ServerHello to TLS wire format.
 @[inline]
 fn pack_shello(s ServerHello) ![]u8 {
 	s.check_shello()!
 	mut out := []u8{cap: size_shello(s)}
 
-	// encodes version, its an u16 value
 	out << pack_u16item[Version](s.version)
-
-	// encodes 32-bytes of random
 	out << s.random
-
-	// encodes sessid, prepended with 1-byte length
 	out << pack_raw(s.sessid, .size1)!
-
-	// encodes choosen CipherSuite, its an u16-based value
 	out << pack_u16item[CipherSuite](s.csuite)
-
-	// encodes 1-byte compression_method
 	out << s.cmeth
-
-	// encodes extension list prepended with 2-bytes length,
-	// with callback extension packer and extension size getter
 	out << pack_extlist(s.xslist, .size2)!
 
 	return out
 }
 
-// parse_shello decodes bytes array into ServerHello and validates them.
+// parse_shello deserializes a ServerHello from raw bytes and validates it.
 @[direct_array_access]
 fn parse_shello(bytes []u8) !ServerHello {
 	if bytes.len < min_shello_size {
 		return error('underflow ServerHello bytes')
 	}
 	mut r := new_buffer(bytes)!
-	// read 2-bytes version
 	val := r.read_u16()!
 	ver := new_version(val)!
 
-	// read 32-bytes of random bytes
 	random := r.read_at_least(32)!
 
-	// read 1-byte sessid length and sessid bytes
 	sid := r.read_u8()!
 	sid_bytes := r.read_at_least(int(sid))!
 
-	// read 2-bytes ciphersuite
 	cs := r.read_u16()!
 	csuite := new_csuite(cs)!
 
-	// read 1-byte compression_method
 	cmeth := r.read_u8()!
 
-	// read extension list with prepended length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist_nolen(xs_bytes)!
 
-	// build ServerHello message
 	sh := ServerHello{
 		version: ver
 		random:  random
@@ -521,56 +453,56 @@ fn parse_shello(bytes []u8) !ServerHello {
 		cmeth:   cmeth
 		xslist:  xs
 	}
-	// validates
 	sh.check_shello()!
 
 	return sh
 }
 
-// HelloRetryRequest
-//
+// HelloRetryRequest is represented on the wire using the ServerHello layout
+// with a special fixed random value.
 @[noinit]
 struct HelloRetryRequest {
 	ServerHello
 }
 
-// pack_hrr encodes HelloRetryRequest message h into bytes array.
+// pack_hrr serializes a HelloRetryRequest as a ServerHello wire value.
 @[inline]
 fn pack_hrr(h HelloRetryRequest) ![]u8 {
 	return pack_shello(h.ServerHello)!
 }
 
+// parse_hrr decodes a HelloRetryRequest and validates the HRR magic bytes.
 @[direct_array_access; inline]
 fn parse_hrr(bytes []u8) !HelloRetryRequest {
 	sh := parse_shello(bytes)!
-	// the ServerHello random should be a helloretry_magic
 	if subtle.constant_time_compare(sh.random, helloretry_magic) != 1 {
 		return error('not a hrr random')
 	}
 	return HelloRetryRequest{sh}
 }
 
-// is_hrr check whether this ServerHello is a HelloRetryRequest message
+// is_hrr returns true when a ServerHello contains the HRR magic random.
 @[inline]
 fn (sh ServerHello) is_hrr() bool {
 	return subtle.constant_time_compare(sh.random, helloretry_magic) == 1
 }
 
-// 4.5.  End of Early Data
-// See https://datatracker.ietf.org/doc/html/rfc8446#section-4.5
-//
+// EndOfEarlyData is an empty TLS handshake message used to signal the end
+// of early data when the server accepts it.
 struct EndOfEarlyData {}
 
-@[noinit]
-type EncryptedExtensions = []Extension // <0..2^16-1>
+// EncryptedExtensions carries the server extension list after ServerHello.
 
-// pack_ee encodes EncryptedExtensions into bytes array
+@[noinit]
+type EncryptedExtensions = []Extension
+
+// pack_ee serializes EncryptedExtensions with a length-prefixed extension list.
 @[inline]
 fn pack_ee(ee EncryptedExtensions) ![]u8 {
 	return pack_extlist(ee, .size2)!
 }
 
-// parse_ee decodes bytes into EncryptedExtensions
+// parse_ee deserializes an EncryptedExtensions payload.
 @[direct_array_access; inline]
 fn parse_ee(bytes []u8) !EncryptedExtensions {
 	return EncryptedExtensions(parse_extlist(bytes)!)
@@ -800,22 +732,18 @@ fn parse_celist(bytes []u8) ![]CertificateEntry {
 //
 const min_certificate_size = 4
 
-// 4.4.2.  Certificate
-// https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.2
+// TLS 1.3 Certificate message definitions and wire helpers.
 //
-// struct {
-//       opaque certificate_request_context<0..2^8-1>;
-//       CertificateEntry certificate_list<0..2^24-1>;
-//    } Certificate;
-//
+// The Certificate message contains a request context and a list of certificate
+// entries, each with certificate data and extensions.
 @[noinit]
 struct Certificate {
 mut:
-	context []u8               // <0..2^8-1>;
-	celist  []CertificateEntry // <0..2^24-1>;
+	context []u8
+	celist  []CertificateEntry
 }
 
-// check_cert does basic validation check on certifcate c.
+// check_cert validates the Certificate structure before serialization.
 @[inline]
 fn (c Certificate) check_cert() ! {
 	if c.context.len > max_u8 {
@@ -826,7 +754,7 @@ fn (c Certificate) check_cert() ! {
 	}
 }
 
-// size_cert returns the length of encoded certifcate c, in bytes.
+// size_cert returns the encoded length of a Certificate message.
 @[inline]
 fn size_cert(c Certificate) int {
 	mut n := 0
@@ -835,37 +763,31 @@ fn size_cert(c Certificate) int {
 	return n
 }
 
-// pack_cert encodes certifcate c into bytes array and check the result.	
+// pack_cert serializes a Certificate message into TLS wire format.
 @[inline]
 fn pack_cert(c Certificate) ![]u8 {
 	c.check_cert()!
 	mut out := []u8{cap: size_cert(c)}
 
-	// encodes 1-byte context.len and the context
 	out << pack_raw(c.context, .size1)!
-
-	// encodes certificate list with 3-bytes length
 	out << pack_objlist[CertificateEntry](c.celist, pack_centry, size_centry, .size3)!
 
 	return out
 }
 
-// parse_cert decodes bytes array into Certificate opaque and validates them.
+// parse_cert deserializes a Certificate message and validates the parsed result.
 @[direct_array_access; inline]
 fn parse_cert(bytes []u8) !Certificate {
 	if bytes.len < min_certificate_size {
 		return error('Bad Certificate bytes: underflow')
 	}
 	mut r := new_buffer(bytes)!
-	// read certificate context
 	cr := r.read_u8()!
 	context := r.read_at_least(int(cr))!
 
-	// read 3-bytes length of certificate list
 	bol3 := r.read_bytes(3)!
 	length := u24_from_bytes(bol3)!
 
-	// parse certificate entries payload
 	celist_data := r.read_at_least(int(length.value))!
 	celist := parse_celist_nolen(celist_data)!
 
@@ -873,36 +795,30 @@ fn parse_cert(bytes []u8) !Certificate {
 		context: context
 		celist:  celist
 	}
-	// check
 	cert.check_cert()!
 
 	return cert
 }
 
-// 4.4.3.  Certificate Verify
-// https://datatracker.ietf.org/doc/html/rfc8446#section-4.4.3
+// TLS 1.3 CertificateVerify message definitions and wire helpers.
 //
+// See RFC 8446 section 4.4.3 for the signature algorithm and signature fields.
 const min_certverify_size = 4
 
-// struct {
-//       SignatureScheme algorithm;
-//       opaque signature<0..2^16-1>;
-//   } CertificateVerify;
-//
 @[noinit]
 struct CertificateVerify {
 mut:
-	algorithm SignatureScheme // u16
-	signature []u8            // <0..2^16-1>;
+	algorithm SignatureScheme
+	signature []u8
 }
 
-// size_certverify returns the length of encoded CertificateVerify cv.
+// size_certverify returns the encoded length of CertificateVerify.
 @[inline]
 fn size_certverify(cv CertificateVerify) int {
 	return min_certverify_size + cv.signature.len
 }
 
-// check_cv does basic check on CertificateVerify c.
+// check_cv validates a CertificateVerify structure before serialization.
 @[inline]
 fn (c CertificateVerify) check_cv() ! {
 	if c.signature.len > max_u16 {
@@ -910,33 +826,28 @@ fn (c CertificateVerify) check_cv() ! {
 	}
 }
 
-// pack_certverify encodes CertificateVerify cv into bytes array.
+// pack_certverify serializes CertificateVerify into TLS wire format.
 @[direct_array_access; inline]
 fn pack_certverify(cv CertificateVerify) ![]u8 {
 	cv.check_cv()!
 	mut out := []u8{cap: size_certverify(cv)}
 
-	// encodes signature algorithm
 	out << pack_u16item[SignatureScheme](cv.algorithm)
-
-	// encodes signature bytes with 2-bytes length
 	out << pack_raw(cv.signature, .size2)!
 
 	return out
 }
 
-// parse_certverify decodes bytes b into CertificateVerify
+// parse_certverify deserializes CertificateVerify from raw bytes.
 @[direct_array_access; inline]
 fn parse_certverify(b []u8) !CertificateVerify {
 	if b.len < min_certverify_size {
 		return error('Bad CertificateVerify bytes: underflow')
 	}
 	mut r := new_buffer(b)!
-	// read signature algorithm
 	alg := r.read_u16()!
 	algorithm := new_sigscheme(alg)!
 
-	// read 2-bytes length of signature and their bytes
 	slen := r.read_u16()!
 	signature := r.read_at_least(int(slen))!
 
@@ -944,29 +855,27 @@ fn parse_certverify(b []u8) !CertificateVerify {
 		algorithm: algorithm
 		signature: signature
 	}
-	// check the result
 	cv.check_cv()!
 
 	return cv
 }
 
-// 4.4.4.  Finished
+// TLS 1.3 Finished message definition.
 //
+// The verify_data length depends on the negotiated hash algorithm.
 @[noinit]
 struct Finished {
 mut:
-	// The length of verify_data was depends on the digest algorithm
-	// being used on the mean of process, its fixed on the start
-	// of authentication by agreed on scheme used.
-	verify_data []u8 // [Hash.length]
+	verify_data []u8
 }
 
+// size_fin returns the length of Finished verify_data.
 @[inline]
 fn size_fin(f Finished) int {
 	return f.verify_data.len
 }
 
-// finished_from_hsk tries to create Finished message from raw Handshake message
+// finished_from_hsk converts a finished Handshake payload to Finished.
 @[inline]
 fn finished_from_hsk(h Handshake) !Finished {
 	if h.tipe != .finished {
@@ -977,77 +886,63 @@ fn finished_from_hsk(h Handshake) !Finished {
 	}
 }
 
-// 4.6.1.  New Session Ticket Message
+// TLS 1.3 NewSessionTicket message definitions and wire helpers.
 //
+// See RFC 8446 section 4.6.1 for the ticket lifetime, age add, nonce,
+// ticket value, and extensions.
 const min_nst_size = 13
 
-// NewSessionTicket
-//
-//  struct {
-//          uint32 ticket_lifetime;
-//          uint32 ticket_age_add;
-//          opaque ticket_nonce<0..255>;
-//          opaque ticket<1..2^16-1>;
-//          Extension xslist<0..2^16-2>;
-//      } NewSessionTicket;
-//
 @[noinit]
 struct NewSessionTicket {
 mut:
 	lifetime u32
 	ageadd   u32
-	nonce    []u8 // u8
-	ticket   []u8 // u16
+	nonce    []u8
+	ticket   []u8
 	xslist   []Extension
 }
 
-// size_nst returns the length of encoded NewSessionTicket message st into bytes array.
+// size_nst returns the encoded length of a NewSessionTicket message.
 @[inline]
 fn size_nst(st NewSessionTicket) int {
 	mut n := 0
-	n += 8 // ticket lifetime + ageadd
-	// 1-byte nonce.len and the nonce
+	n += 8
 	n += 1 + st.nonce.len
-	// 2-bytes ticket.len and the ticket
 	n += 2 + st.ticket.len
-
-	// extension list with 2-bytes length
 	n += size_extlist(st.xslist, .size2)
-
 	return n
 }
 
-// check_nst does basic validation on NewSessionTicket message st
+// check_nst validates the fixed-size constraints of NewSessionTicket.
 @[inline]
 fn (st NewSessionTicket) check_nst() ! {
-	// TODO
+	if st.nonce.len > max_u8 {
+		return error('ticket_nonce length exceed max_u8')
+	}
+	if st.ticket.len < 1 || st.ticket.len > max_u16 {
+		return error('ticket length out of range')
+	}
 }
 
-// pack_nst encodes NewSessionTicket message st into bytes array.
+// pack_nst serializes a NewSessionTicket to TLS wire format.
 @[direct_array_access; inline]
 fn pack_nst(st NewSessionTicket) ![]u8 {
 	st.check_nst()!
 	mut out := []u8{cap: size_nst(st)}
 
-	// encodes lifetime + ageadd
 	mut plus2 := []u8{len: 8}
 	binary.big_endian_put_u32(mut plus2[0..4], st.lifetime)
 	binary.big_endian_put_u32(mut plus2[4..8], st.ageadd)
 	out << plus2
 
-	// encodes nst nonce with 1-byte length
 	out << pack_raw(st.nonce, .size1)!
-
-	// encodes nst ticket with 2-bytes length
 	out << pack_raw(st.ticket, .size2)!
-
-	// encodes extension list with 2-bytes length
 	out << pack_extlist(st.xslist, .size2)!
 
 	return out
 }
 
-// parse_nst decodes bytes array into NewSessionTicket message and validates them.
+// parse_nst deserializes NewSessionTicket from raw bytes.
 @[direct_array_access; inline]
 fn parse_nst(b []u8) !NewSessionTicket {
 	if b.len < min_nst_size {
@@ -1055,18 +950,15 @@ fn parse_nst(b []u8) !NewSessionTicket {
 	}
 	mut r := new_buffer(b)!
 
-	// parse ticket lifetime and ageadd
 	lifetime := r.read_u32()!
 	ageadd := r.read_u32()!
 
-	// parse 1-byte nonce length and the nonce bytes
 	nonce_len := r.read_u8()!
 	nonce := r.read_at_least(int(nonce_len))!
-	// parse 2-bytes ticket length and the ticket bytes
+
 	tkt_len := r.read_u16()!
 	ticket := r.read_at_least(int(tkt_len))!
 
-	// read extension list with 2-bytes length
 	xlen := r.read_u16()!
 	xs_bytes := r.read_at_least(int(xlen))!
 	xs := parse_extlist_nolen(xs_bytes)!
@@ -1078,21 +970,18 @@ fn parse_nst(b []u8) !NewSessionTicket {
 		ticket:   ticket
 		xslist:   xs
 	}
-	// check the result
 	st.check_nst()!
 
 	return st
 }
 
-// KeyUpdate message
-//
+// KeyUpdate message indicates whether the peer should update its traffic keys.
 enum KeyUpdate as u8 {
 	not_requested = 0
 	was_requested = 1
-	// 255
 }
 
-// new_keyupdate creates new KeyUpdate
+// new_keyupdate converts a raw byte to a KeyUpdate enum.
 @[inline]
 fn new_keyupdate(val u8) !KeyUpdate {
 	match val {
