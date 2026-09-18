@@ -259,8 +259,9 @@ fn pack_raw(r []u8, n SizeT) ![]u8 {
 			bol3 := u24_from_int(r.len)!
 			out << bol3.bytes()!
 		}
-		// TODO: support for more long bytes length
 	}
+
+	// TODO: support for more long bytes length
 
 	// get the raw bytes item, and append into output
 	out << r

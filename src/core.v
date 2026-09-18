@@ -9,22 +9,24 @@ module tls13
 //
 // These values are encoded on the wire as a 16-bit protocol version.
 // TLS 1.3 uses 0x0304, while older versions remain available for compatibility.
-enum Version as u16 {
-	tls13 = 0x0304
-	tls12 = 0x0303
-	tls11 = 0x0302
-	tls10 = 0x0301
-	ssl30 = 0x0300
-}
+// We define version as a raw u16 value for further future compatibility.
+type Version = u16
+
+const tls13_version = Version(0x0304)
+const tls12_version = Version(0x0303)
+const tls11_version = Version(0x0302)
+const tls10_version = Version(0x0301)
+const ssl30_version = Version(0x0300)
 
 // str returns the human-readable name for the TLS version.
 fn (v Version) str() string {
-	match v {
-		.tls13 { return 'TLS 1.3' }
-		.tls12 { return 'TLS 1.2' }
-		.tls11 { return 'TLS 1.1' }
-		.tls10 { return 'TLS 1.0' }
-		.ssl30 { return 'SSL 3.0' }
+	return match v {
+		tls13_version { 'TLS 1.3' }
+		tls12_version { 'TLS 1.2' }
+		tls11_version { 'TLS 1.1' }
+		tls10_version { 'TLS 1.0' }
+		ssl30_version { 'SSL 3.0' }
+		else { 'UNKNOWN_TLS_VERSION ${v}' }
 	}
 }
 
@@ -32,17 +34,15 @@ fn (v Version) str() string {
 //
 // Returns an error for unsupported or invalid version values.
 @[inline]
-fn new_version(val u16) !Version {
-	match val {
+fn new_version(val u16) Version {
+	return match val {
 		// vfmt off
-		u16(0x0300) { return .ssl30 }
-		u16(0x0301) { return .tls10 }
-		u16(0x0302) { return .tls11 }
-		u16(0x0303) { return .tls12 }
-		u16(0x0304) { return .tls13 }
-		else {
-			return error('unsupported Version value')
-		}
+		0x0300 { ssl30_version }
+		0x0301 { tls10_version }
+		0x0302 { tls11_version }
+		0x0303 { tls12_version }
+		0x0304 { tls13_version }
+		else { Version(val) }
 		// vfmt on
 	}
 }
@@ -50,50 +50,41 @@ fn new_version(val u16) !Version {
 // ContentType values for TLS record payloads.
 //
 // Each content type is encoded as a single byte on the TLS record layer.
-enum ContentType as u8 {
-	change_cipher_spec = 20
-	alert              = 21
-	handshake          = 22
-	application_data   = 23
-	heartbeat          = 24
-}
+type ContentType = u8
 
-// new_ctntype converts a raw u8 wire value into a ContentType enum.
-//
-// Returns an error when the byte value does not map to a supported
-// TLS content type.
+const ct_invalid = ContentType(0)
+const ct_change_cipher_spec = ContentType(20)
+const ct_alert = ContentType(21)
+const ct_handshake = ContentType(22)
+const ct_application_data = ContentType(23)
+const ct_heartbeat = ContentType(24)
+
+// new_content_type creates a TLS ContentType from a raw u8 value.
 @[inline]
-fn new_ctntype(val u8) !ContentType {
-	match val {
-		20 {
-			return .change_cipher_spec
-		}
-		21 {
-			return .alert
-		}
-		22 {
-			return .handshake
-		}
-		23 {
-			return .application_data
-		}
-		24 {
-			return .heartbeat
-		}
-		else {
-			return error('unsupported ContentType value')
-		}
+fn new_content_type(val u8) ContentType {
+	return match val {
+		// vfmt off
+		0 { ct_invalid }
+		20 { ct_change_cipher_spec }
+		21 { ct_alert }
+		22 { ct_handshake }
+		23 { ct_application_data }
+		24 { ct_heartbeat }
+		else { ContentType(val) }
+		// vfmt on
 	}
 }
 
 // str returns the human-readable name for a ContentType.
 fn (c ContentType) str() string {
-	match c {
-		.change_cipher_spec { return 'CHANGE_CIPHER_SPEC' }
-		.alert { return 'ALERT' }
-		.handshake { return 'HANDSHAKE' }
-		.application_data { return 'APPLICATION_DATA' }
-		.heartbeat { return 'HEARTBEAT' }
+	return match c {
+		ct_invalid { 'INVALID_MSG' }
+		ct_change_cipher_spec { 'CHANGE_CIPHER_SPEC' }
+		ct_alert { 'ALERT' }
+		ct_handshake { 'HANDSHAKE' }
+		ct_application_data { 'APPLICATION_DATA' }
+		ct_heartbeat { 'HEARTBEAT' }
+		else { 'UNKNOWN_CONTENT_TYPE ${c}' }
 	}
 }
 
@@ -101,59 +92,82 @@ fn (c ContentType) str() string {
 //
 // These values appear in the handshake message header and denote the
 // specific handshake payload type.
-enum HandshakeType as u8 {
-	hello_request        = 0
-	client_hello         = 1
-	server_hello         = 2
-	hello_verify_request = 3
-	new_session_ticket   = 4
-	end_of_early_data    = 5
-	hello_retry_request  = 6
-	encrypted_extensions = 8
-	certificate          = 11
-	server_key_exchange  = 12
-	certificate_request  = 13
-	server_hello_done    = 14
-	certificate_verify   = 15
-	client_key_exchange  = 16
-	finished             = 20
-	certificate_url      = 21
-	certificate_status   = 22
-	supplemental_data    = 23
-	key_update           = 24
-	message_hash         = 254
+type HandshakeType = u8
+
+const ht_hello_request = HandshakeType(0)
+const ht_client_hello = HandshakeType(1)
+const ht_server_hello = HandshakeType(2)
+const ht_hello_verify_request = HandshakeType(3)
+const ht_new_session_ticket = HandshakeType(4)
+const ht_end_of_early_data = HandshakeType(5)
+const ht_hello_retry_request = HandshakeType(6)
+const ht_encrypted_extensions = HandshakeType(8)
+const ht_certificate = HandshakeType(11)
+const ht_server_key_exchange = HandshakeType(12)
+const ht_certificate_request = HandshakeType(13)
+const ht_server_hello_done = HandshakeType(14)
+const ht_certificate_verify = HandshakeType(15)
+const ht_client_key_exchange = HandshakeType(16)
+const ht_finished = HandshakeType(20)
+const ht_certificate_url = HandshakeType(21)
+const ht_certificate_status = HandshakeType(22)
+const ht_supplemental_data = HandshakeType(23)
+const ht_key_update = HandshakeType(24)
+const ht_message_hash = HandshakeType(254)
+
+// string representation of HandshakeType v
+fn (v HandshakeType) str() string {
+	return match v {
+		ht_hello_request { 'HELLO_REQUEST' }
+		ht_client_hello { 'CLIENT_HELLO' }
+		ht_server_hello { 'SERVER_HELLO' }
+		ht_hello_verify_request { 'HELLO_VERIFY_REQUEST' }
+		ht_new_session_ticket { 'NEWSESSION_TICKET' }
+		ht_end_of_early_data { 'ENDOF_EARLY_DATA' }
+		ht_hello_retry_request { 'HELLO_RETRY_REQUEST' }
+		ht_encrypted_extensions { 'ENCRYPTED_EXTENSIONS' }
+		ht_certificate { 'CERTIFICATE' }
+		ht_server_key_exchange { 'SERVER_KEY_EXCHANGE' }
+		ht_certificate_request { 'CERTIFICATE_REQUEST' }
+		ht_server_hello_done { 'SERVER_HELLO_DONE' }
+		ht_certificate_verify { 'CERTIFICATE_VERIFY' }
+		ht_client_key_exchange { 'CLIENT_KEY_EXCHANGE' }
+		ht_finished { 'FINISHED' }
+		ht_certificate_url { 'CERTIFICATE_URL' }
+		ht_certificate_status { 'CERTIFICATE_STATUS' }
+		ht_supplemental_data { 'SUPPLEMENTAL_DATA' }
+		ht_key_update { 'KEY_UPDATE' }
+		ht_message_hash { 'MESSAGE_HASH' }
+		else { 'UNKNOWN_HANDSHAKE_TYPE ${val}' }
+	}
 }
 
-// new_hsktype converts a raw u8 handshake type value into a HandshakeType enum.
-//
-// Returns an error for unsupported handshake type values.
+// new_hsk_type converts a raw u8 handshake type value into a HandshakeType.
 @[inline]
-fn new_hsktype(val u8) !HandshakeType {
-	match val {
+fn new_hsk_type(val u8) HandshakeType {
+	return match val {
 		// vfmt off
-		0x00 { return .hello_request }
-		0x01 { return .client_hello }
-		0x02 { return .server_hello }
-		0x03 { return .hello_verify_request }
-		0x04 { return .new_session_ticket }
-		0x05 { return .end_of_early_data }
-		0x06 { return .hello_retry_request }
-		0x08 { return .encrypted_extensions }
-		0x0b { return .certificate }
-		0x0c { return .server_key_exchange }
-		0x0d { return .certificate_request }
-		0x0e { return .server_hello_done }
-		0x0f { return .certificate_verify }
-		0x10 { return .client_key_exchange }
-		0x14 { return .finished }
-		0x15 { return .certificate_url }
-		0x16 { return .certificate_status }
-		0x17 { return .supplemental_data }
-		0x18 { return .key_update }
-		0xfe { return .message_hash }
-		else {
-			return error('unsupported value for HandshakeType')
-		}
+		0x00 { ht_hello_request }
+		0x01 { ht_client_hello }
+		0x02 { ht_server_hello }
+		0x03 { ht_hello_verify_request }
+		0x04 { ht_new_session_ticket }
+		0x05 { ht_end_of_early_data }
+		0x06 { ht_hello_retry_request }
+		0x08 { ht_encrypted_extensions }
+		0x0b { ht_certificate }
+		0x0c { ht_server_key_exchange }
+		0x0d { ht_certificate_request }
+		0x0e { ht_server_hello_done }
+		0x0f { ht_certificate_verify }
+		0x10 { ht_client_key_exchange }
+		0x14 { ht_finished }
+		0x15 { ht_certificate_url }
+		0x16 { ht_certificate_status }
+		0x17 { ht_supplemental_data }
+		0x18 { ht_key_update }
+		0xfe { ht_message_hash }
+		else { HandshakeType(val) }
 		// vfmt on
 	}
 }
@@ -516,102 +530,72 @@ fn new_exttype(val u16) !ExtensionType {
 // TlS 1.3 SignatureScheme
 //
 // SignatureScheme is a signature algorithms may be used in digital signatures, defined as u16 value
-enum SignatureScheme as u16 {
-	rsa_pkcs1_sha256       = 0x0401
-	rsa_pkcs1_sha384       = 0x0501
-	rsa_pkcs1_sha512       = 0x0601
-	ecdsa_secp256r1_sha256 = 0x0403
-	ecdsa_secp384r1_sha384 = 0x0503
-	ecdsa_secp521r1_sha512 = 0x0603
-	rsa_pssrsae_sha256     = 0x0804
-	rsa_pssrsae_sha384     = 0x0805
-	rsa_pssrsae_sha512     = 0x0806
-	ed25519                = 0x0807
-	ed448                  = 0x0808
-	rsa_psspss_sha256      = 0x0809
-	rsa_psspss_sha384      = 0x080a
-	rsa_psspss_sha512      = 0x080b
-	rsa_pkcs1_sha1         = 0x0201
-	ecdsa_sha1             = 0x0203
-}
+type SignatureScheme = u16
 
-// new_sigscheme creates SignatureScheme from u16 value
+const sig_rsa_pkcs1_sha256 = SignatureScheme(0x0401)
+const sig_rsa_pkcs1_sha384 = SignatureScheme(0x0501)
+const sig_rsa_pkcs1_sha512 = SignatureScheme(0x0601)
+const sig_ecdsa_gr_secp256r1_sha256 = SignatureScheme(0x0403)
+const sig_ecdsa_secp384r1_sha384 = SignatureScheme(0x0503)
+const sig_ecdsa_secp521r1_sha512 = SignatureScheme(0x0603)
+const sig_rsa_pssrsae_sha256 = SignatureScheme(0x0804)
+const sig_rsa_pssrsae_sha384 = SignatureScheme(0x0805)
+const sig_rsa_pssrsae_sha512 = SignatureScheme(0x0806)
+const sig_ed25519 = SignatureScheme(0x0807)
+const sig_ed448 = SignatureScheme(0x0808)
+const sig_rsa_psspss_sha256 = SignatureScheme(0x0809)
+const sig_rsa_psspss_sha384 = SignatureScheme(0x080a)
+const sig_rsa_psspss_sha512 = SignatureScheme(0x080b)
+const sig_rsa_pkcs1_sha1 = SignatureScheme(0x0201)
+const sig_ecdsa_sha1 = SignatureScheme(0x0203)
+
+// new_signature_scheme creates SignatureScheme from u16 value
 @[inline]
-fn new_sigscheme(val u16) !SignatureScheme {
-	match val {
-		0x0401 {
-			return .rsa_pkcs1_sha256
-		}
-		0x0501 {
-			return .rsa_pkcs1_sha384
-		}
-		0x0601 {
-			return .rsa_pkcs1_sha512
-		}
-		0x0403 {
-			return .ecdsa_secp256r1_sha256
-		}
-		0x0503 {
-			return .ecdsa_secp384r1_sha384
-		}
-		0x0603 {
-			return .ecdsa_secp521r1_sha512
-		}
-		0x0804 {
-			return .rsa_pssrsae_sha256
-		}
-		0x0805 {
-			return .rsa_pssrsae_sha384
-		}
-		0x0806 {
-			return .rsa_pssrsae_sha512
-		}
-		0x0807 {
-			return .ed25519
-		}
-		0x0808 {
-			return .ed448
-		}
-		0x0809 {
-			return .rsa_psspss_sha256
-		}
-		0x080a {
-			return .rsa_psspss_sha384
-		}
-		0x080b {
-			return .rsa_psspss_sha512
-		}
-		0x0201 {
-			return .rsa_pkcs1_sha1
-		}
-		0x0203 {
-			return .ecdsa_sha1
-		}
-		else {
-			return error('unsupported SignatureScheme value')
-		}
+fn new_signature_scheme(val u16) SignatureScheme {
+	return match val {
+		// vfmt off
+		0x0401 { sig_rsa_pkcs1_sha256 }
+		0x0501 { sig_rsa_pkcs1_sha384 }
+		0x0601 { sig_rsa_pkcs1_sha512 }
+		0x0403 { sig_ecdsa_gr_secp256r1_sha256 }
+		0x0503 { sig_ecdsa_secp384r1_sha384 }
+		0x0603 { sig_ecdsa_secp521r1_sha512 }
+		0x0804 { sig_rsa_pssrsae_sha256 }
+		0x0805 { sig_rsa_pssrsae_sha384 }
+		0x0806 { sig_rsa_pssrsae_sha512 }
+		0x0807 { sig_ed25519 }
+		0x0808 { sig_ed448 }
+		0x0809 { sig_rsa_psspss_sha256 }
+		0x080a { sig_rsa_psspss_sha384 }
+		0x080b { sig_rsa_psspss_sha512 }
+		0x0201 { sig_rsa_pkcs1_sha1 }
+		0x0203 { sig_ecdsa_sha1 }
+		else { SignatureScheme(val) }
+		// vfmt on
 	}
 }
 
+
 // str returns string representation of SignatureScheme s.
 fn (s SignatureScheme) str() string {
-	match s {
-		.rsa_pkcs1_sha256 { return 'RSA_PKCS1_SHA256' }
-		.rsa_pkcs1_sha384 { return 'RSA_PKCS1_SHA384' }
-		.rsa_pkcs1_sha512 { return 'RSA_PKCS1_SHA512' }
-		.ecdsa_secp256r1_sha256 { return 'ECDSA_SECP256R1_SHA256' }
-		.ecdsa_secp384r1_sha384 { return 'ECDSA_SECP384R1_SHA384' }
-		.ecdsa_secp521r1_sha512 { return 'ECDSA_SECP521R1_SHA512' }
-		.rsa_pssrsae_sha256 { return 'RSA_PSSRSAE_SHA256' }
-		.rsa_pssrsae_sha384 { return 'RSA_PSSRSAE_SHA384' }
-		.rsa_pssrsae_sha512 { return 'RSA_PSSRSAE_SHA512' }
-		.ed25519 { return 'ED25519' }
-		.ed448 { return 'ED448' }
-		.rsa_psspss_sha256 { return 'RSA_PSSPSS_SHA256' }
-		.rsa_psspss_sha384 { return 'RSA_PSSPSS_SHA384' }
-		.rsa_psspss_sha512 { return 'RSA_PSSPSS_SHA512' }
-		.rsa_pkcs1_sha1 { return 'RSA_PKCS1_SHA1' }
-		.ecdsa_sha1 { return 'ECDSA_SHA1' }
+	return match s {
+		sig_rsa_pkcs1_sha256 { 'RSA_PKCS1_SHA256' }
+		sig_rsa_pkcs1_sha384 { 'RSA_PKCS1_SHA384' }
+		sig_rsa_pkcs1_sha512 { 'RSA_PKCS1_SHA512' }
+		sig_ecdsa_gr_secp256r1_sha256 { 'ECDSA_gr_secp256r1_SHA256' }
+		sig_ecdsa_secp384r1_sha384 { 'ECDSA_SECP384R1_SHA384' }
+		sig_ecdsa_secp521r1_sha512 { 'ECDSA_SECP521R1_SHA512' }
+		sig_rsa_pssrsae_sha256 { 'RSA_PSSRSAE_SHA256' }
+		sig_rsa_pssrsae_sha384 { 'RSA_PSSRSAE_SHA384' }
+		sig_rsa_pssrsae_sha512 { 'RSA_PSSRSAE_SHA512' }
+		sig_ed25519 { 'ED25519' }
+		sig_ed448 { 'ED448' }
+		sig_rsa_psspss_sha256 { 'RSA_PSSPSS_SHA256' }
+		sig_rsa_psspss_sha384 { 'RSA_PSSPSS_SHA384' }
+		sig_rsa_psspss_sha512 { 'RSA_PSSPSS_SHA512' }
+		sig_rsa_pkcs1_sha1 { 'RSA_PKCS1_SHA1' }
+		sig_ecdsa_sha1 { 'ECDSA_SHA1' }
+		else { 'UNKNWON_SIGNATURE_SCHEME ${val} ' }
 	}
 }
 
@@ -619,34 +603,50 @@ fn (s SignatureScheme) str() string {
 //
 // A TLS 1.3 NamedGroup is set of opaques that both the client and server agree upon during
 // the handshake to perform the key exchange, securely generating the shared secret keys for the session,
-enum NamedGroup as u16 {
-	secp256r1 = 0x0017
-	secp384r1 = 0x0018
-	secp521r1 = 0x0019
-	x25519    = 0x001D
-	x448      = 0x001E
-	ffdhe2048 = 0x0100
-	ffdhe3072 = 0x0101
-	ffdhe4096 = 0x0102
-	ffdhe6144 = 0x0103
-	ffdhe8192 = 0x0104
+type NamedGroup = u16
+
+const gr_secp256r1 = NamedGroup(0x0017)
+const gr_secp384r1 = NamedGroup(0x0018)
+const gr_secp521r1 = NamedGroup(0x0019)
+const gr_x25519 = NamedGroup(0x001D)
+const gr_x448 = NamedGroup(0x001E)
+const gr_ffdhe2048 = NamedGroup(0x0100)
+const gr_ffdhe3072 = NamedGroup(0x0101)
+const gr_ffdhe4096 = NamedGroup(0x0102)
+const gr_ffdhe6144 = NamedGroup(0x0103)
+const gr_ffdhe8192 = NamedGroup(0x0104)
+
+fn (g NamedGroup) str() string {
+	return match g {
+		gr_secp256r1 { 'SECP256R1' }
+		gr_secp384r1 { 'SECP384R1' }
+		gr_secp521r1 { 'SECP521R1' }
+		gr_x25519 { 'x25519' }
+		gr_x448 { 'x448' }
+		gr_ffdhe2048 { 'FFDHE2048' }
+		gr_ffdhe3072 { 'FFDHE3072' }
+		gr_ffdhe4096 { 'FFDHE4096' }
+		gr_ffdhe6144 { 'FFDHE6144' }
+		gr_ffdhe8192 { 'FFDHE8192' }
+		else { 'UNKNOWN_NAMEDGROUP ${val}' }
+	}
 }
 
-// new_group creates a NamedGroup from u16 value
+// new_named_group creates a NamedGroup from u16 value
 @[inline]
-fn new_group(val u16) !NamedGroup {
-	match val {
-		0x0017 { return .secp256r1 }
-		0x0018 { return .secp384r1 }
-		0x0019 { return .secp521r1 }
-		0x001D { return .x25519 }
-		0x001E { return .x448 }
-		0x0100 { return .ffdhe2048 }
-		0x0101 { return .ffdhe3072 }
-		0x0102 { return .ffdhe4096 }
-		0x0103 { return .ffdhe6144 }
-		0x0104 { return .ffdhe8192 }
-		else { return error('unknown NamedGroup value') }
+fn new_named_group(val u16) NamedGroup {
+	return match val {
+		0x0017 { gr_secp256r1 }
+		0x0018 { gr_secp384r1 }
+		0x0019 { gr_secp521r1 }
+		0x001D { gr_x25519 }
+		0x001E { gr_x448 }
+		0x0100 { gr_ffdhe2048 }
+		0x0101 { gr_ffdhe3072 }
+		0x0102 { gr_ffdhe4096 }
+		0x0103 { gr_ffdhe6144 }
+		0x0104 { gr_ffdhe8192 }
+		else { NamedGroup(val) }
 	}
 }
 

@@ -666,7 +666,8 @@ fn (mut ses Session) parse_server_hello(sh ServerHello) ! {
 	}
 	spv := srv_spv[0] // Extension with .supported_versions type
 	spver := SupportedVersions.unpack(spv.data, .server_hello)! // SupportedVersions
-	sh_spv := spver as ServerHRetrySpV // cast to Server SupportedVersions
+	sh_spv := // cast to Server SupportedVersions
+	spver as ServerHRetrySpV
 	// we check and only support for tls_v13
 	if sh_spv.version != tls_v13 {
 		ses.change_tls_state(.ts_closed)

@@ -133,7 +133,7 @@ fn (mut r RContext) decrypt(c TlsCiphertext, rkey []u8, riv []u8) !TlsRecord {
 	inner := parse_innertext(output)!
 
 	rec := TlsRecord{
-		ctype: inner.ctype
+		ctype:    inner.ctype
 		// should be another version ?
 		version:  .tls12
 		fragment: inner.content
